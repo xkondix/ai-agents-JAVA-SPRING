@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.xkondix</groupId>
+        <artifactId>ai-agents-JAVA-SPRING</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>spring-ai-agent</artifactId>
+    <name>Spring AI Agent - ChatClient, Advisors, FunctionCallback</name>
+    <description>
+        Demonstrates the agent loop concept using Spring AI 1.0.3:
+
+        1. RAW LOOP      - same manual loop as in langchain4j-agent for comparison
+        2. CHAT CLIENT   - fluent ChatClient API with prompt builder
+        3. ADVISORS      - MessageChatMemoryAdvisor, LoggingAdvisor, custom ApprovalAdvisor
+        4. FUNCTION CALL - FunctionCallback (Spring AI tool approach)
+        5. MEMORY        - InMemoryChatMemoryRepository + Redis
+
+        Port: 8084
+    </description>
+
+    <dependencies>
+
+        <!-- Spring Boot Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--
+            Spring AI - Ollama starter
+            Brings: spring-ai-core, spring-ai-ollama, autoconfiguration
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-ollama</artifactId>
+        </dependency>
+
+        <!--
+            Spring AI - OpenAI starter
+            Brings: spring-ai-core, spring-ai-openai, autoconfiguration
+        -->
+<!--        <dependency>-->
+<!--            <groupId>org.springframework.ai</groupId>-->
+<!--            <artifactId>spring-ai-starter-model-openai</artifactId>-->
+<!--        </dependency>-->
+
+        <!--
+            Spring AI - ChatMemory (in-memory)
+            Includes: InMemoryChatMemoryRepository, MessageWindowChatMemory
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-advisors-vector-store</artifactId>
+        </dependency>
+
+        <!-- Spring AI - Redis chat memory repository -->
+<!--        <dependency>-->
+<!--            <groupId>org.springframework.ai</groupId>-->
+<!--            <artifactId>spring-ai-redis-store</artifactId>-->
+<!--        </dependency>-->
+<!--        <dependency>-->
+<!--            <groupId>org.springframework.boot</groupId>-->
+<!--            <artifactId>spring-boot-starter-data-redis</artifactId>-->
+<!--        </dependency>-->
+
+        <!-- Actuator + SpringDoc -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
+        <!-- Common DTOs -->
+        <dependency>
+            <groupId>com.xkondix</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

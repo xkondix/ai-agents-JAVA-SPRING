@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.xkondix</groupId>
+        <artifactId>ai-agents-JAVA-SPRING</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>spring-ai-mcp</artifactId>
+    <name>Spring AI MCP Client - connecting to external MCP servers</name>
+    <description>
+        Demonstrates MCP client integration in Spring AI:
+
+        1. SyncMcpClient    - synchronous MCP client (HTTP/SSE transport)
+        2. McpToolCallback  - MCP tools as Spring AI FunctionCallbacks
+        3. Orchestrator     - ChatClient using tools from multiple MCP servers
+        4. Advisor pipeline - ApprovalAdvisor wrapping MCP tool calls
+
+        Connects to:
+          - mcp-server module (port 8081)  via HTTP/SSE
+          - Python MCP agent               via stdio
+
+        Port: 8085
+    </description>
+
+    <dependencies>
+
+        <!-- Spring Boot Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Spring AI - Ollama -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-ollama</artifactId>
+        </dependency>
+
+        <!-- Spring AI - OpenAI -->
+<!--        <dependency>-->
+<!--            <groupId>org.springframework.ai</groupId>-->
+<!--            <artifactId>spring-ai-starter-model-openai</artifactId>-->
+<!--        </dependency>-->
+
+        <!--
+            Spring AI MCP Client starter
+            Includes:
+              - McpSyncClient / McpAsyncClient
+              - SseClientTransport (HTTP/SSE)
+              - StdioClientTransport (subprocess)
+              - SyncMcpToolCallbackProvider
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-client</artifactId>
+        </dependency>
+
+        <!-- Actuator + SpringDoc -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
+        <!-- Common DTOs -->
+        <dependency>
+            <groupId>com.xkondix</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

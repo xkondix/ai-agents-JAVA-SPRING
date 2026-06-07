@@ -1,0 +1,63 @@
+# Wazne dla stdio: wylacz banner i logi na stdout
+# (stdout jest zarezerwowany dla JSON-RPC MCP)
+spring:
+  main:
+    banner-mode: off
+  application:
+    name: code-mcp-server
+  ai:
+    mcp:
+      server:
+        name: ai-agents-code-server
+        version: 1.0.0
+        # STDIO = domyslny transport dla Claude Desktop
+        # Zmien na SYNC_HTTP_SSE jesli chcesz HTTP
+        transport: STDIO
+
+logging:
+  # Dla stdio: logi musza isc do pliku lub stderr, NIE stdout
+  pattern:
+    console:
+  level:
+    root: WARN
+    com.xkondix: INFO
+  file:
+    name: logs/code-mcp-server.log
+
+# Konfiguracja projektu
+code-mcp:
+  project-root: C:\Users\konra\Desktop\ai-agents-JAVA-SPRING
+  allowed-extensions:
+    - .java
+    - .xml
+    - .yml
+    - .yaml
+    - .properties
+    - .md
+    - .json
+    - .py
+    - .jsx
+    - .js
+    - .ts
+    - .tsx
+    - .sql
+    - .txt
+  ignored-dirs:
+    - .git
+    - target
+    - node_modules
+    - .idea
+    - .mvn
+    - __pycache__
+    - logs
+  approval-timeout-minutes: 10
+
+# HTTP port (uzywany tylko gdy transport=SYNC_HTTP_SSE)
+server:
+  port: 8086
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

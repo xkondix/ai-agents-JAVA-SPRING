@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.xkondix</groupId>
+        <artifactId>ai-agents-JAVA-SPRING</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>code-mcp-server</artifactId>
+    <name>Code MCP Server - project file access and editing tools</name>
+    <description>
+        MCP Server exposing tools for reading, searching and editing files
+        in the ai-agents-JAVA-SPRING project.
+
+        Uses Spring AI MCP Server starter (official approach from docs).
+        Runs as stdio subprocess started by Claude Desktop.
+
+        Safe (no approval):  read_file, list_files, get_project_structure, search_in_files
+        Requires approval:   write_file, create_file, move_file
+        Double approval:     delete_file
+
+        Approval REST API (HTTP mode only):
+          GET  /approvals
+          POST /approvals/{id}/approve
+          POST /approvals/{id}/reject
+
+        Transport: STDIO (default for Claude Desktop)
+                   HTTP/SSE available via -Dspring.ai.mcp.server.transport=SYNC_HTTP_SSE
+    </description>
+
+    <dependencies>
+
+        <!--
+            Spring AI MCP Server starter — oficjalne podejscie z dokumentacji.
+            Zawiera: spring-ai-mcp-server-core + autoconfiguracja
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server</artifactId>
+        </dependency>
+
+        <!--
+            Spring Web — potrzebny tylko dla Approval REST API.
+            Mozna usunac jesli uzywasz tylko stdio bez approval endpoint.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Actuator — health check -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <!-- Creates an executable JAR to be run by Claude Desktop -->
+                    <executable>true</executable>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

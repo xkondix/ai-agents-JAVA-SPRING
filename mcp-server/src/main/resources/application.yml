@@ -1,0 +1,23 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: mcp-server
+  ai:
+    mcp:
+      server:
+        name: ai-sandbox-mcp-server
+        version: 1.0.0
+        transport: SYNC_HTTP_SSE
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.xkondix: DEBUG
+    io.modelcontextprotocol: INFO

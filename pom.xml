@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ================================================================ -->
+    <!--  PARENT POM — ai-agents-JAVA-SPRING                              -->
+    <!--  Konrad Kowalczyk  |  xkondix AI Sandbox                         -->
+    <!-- ================================================================ -->
+
+    <groupId>com.xkondix</groupId>
+    <artifactId>ai-agents-JAVA-SPRING</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>AI agents — Multi-Agent Systems</name>
+    <description>
+        Multi-module project demonstrating agent loops, MCP, RAG and tool calling
+        using two frameworks: LangChain4j and Spring AI.
+        Part 2 of the "LangChain4j with Spring Boot" presentation series "https://github.com/xkondix/aiSandbox-JAVA-SPIRNG".
+    </description>
+
+    <modules>
+        <module>common</module>
+        <module>mcp-server</module>
+        <module>code-mcp-server</module>
+        <module>langchain4j-agent</module>
+        <module>langchain4j-mcp</module>
+        <module>spring-ai-agent</module>
+        <module>spring-ai-mcp</module>
+    </modules>
+
+    <!-- ================================================================ -->
+    <!--  GLOBAL PROPERTIES                                               -->
+    <!-- ================================================================ -->
+    <properties>
+        <!-- Java -->
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Spring Boot (used as parent for submodules) -->
+        <spring-boot.version>3.5.0</spring-boot.version>
+
+        <!-- ── Framework 1: LangChain4j ── -->
+        <langchain4j.version>1.15.1</langchain4j.version>
+
+        <!-- ── Framework 2: Spring AI ── -->
+        <spring-ai.version>1.0.3</spring-ai.version>
+
+        <!-- ── MCP SDK (used by mcp-server module) ── -->
+        <mcp-sdk.version>0.10.0</mcp-sdk.version>
+
+        <!-- ── Other ── -->
+        <lombok.version>1.18.34</lombok.version>
+        <mapstruct.version>1.6.3</mapstruct.version>
+        <springdoc.version>2.8.9</springdoc.version>
+    </properties>
+
+    <!-- ================================================================ -->
+    <!--  DEPENDENCY MANAGEMENT (BOMs + shared deps)                      -->
+    <!-- ================================================================ -->
+    <dependencyManagement>
+        <dependencies>
+
+            <!-- Spring Boot BOM -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- ── LangChain4j BOM ── -->
+            <dependency>
+                <groupId>dev.langchain4j</groupId>
+                <artifactId>langchain4j-bom</artifactId>
+                <version>${langchain4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- ── Spring AI BOM ── -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- ── MCP SDK BOM ── -->
+            <dependency>
+                <groupId>io.modelcontextprotocol.sdk</groupId>
+                <artifactId>mcp-bom</artifactId>
+                <version>${mcp-sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- ── Internal modules ── -->
+            <dependency>
+                <groupId>com.xkondix</groupId>
+                <artifactId>common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- ── Lombok ── -->
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <!-- ── SpringDoc OpenAPI ── -->
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
+            </dependency>
+
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- ================================================================ -->
+    <!--  DEPENDENCIES shared by ALL modules                              -->
+    <!-- ================================================================ -->
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- ================================================================ -->
+    <!--  BUILD                                                            -->
+    <!-- ================================================================ -->
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot.version}</version>
+                    <configuration>
+                        <excludes>
+                            <exclude>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </exclude>
+                        </excludes>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
+                    <configuration>
+                        <source>${java.version}</source>
+                        <target>${java.version}</target>
+                        <compilerArgs>
+                            <arg>--enable-preview</arg>
+                        </compilerArgs>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                        </annotationProcessorPaths>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+</project>

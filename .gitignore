@@ -1,0 +1,42 @@
+# ── Maven ─────────────────────────────────────────────────────────────────
+target/
+*.jar
+*.war
+*.ear
+
+# ── IntelliJ IDEA ─────────────────────────────────────────────────────────
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# ── Spring Boot ───────────────────────────────────────────────────────────
+spring-shell.log
+
+# ── Logs ──────────────────────────────────────────────────────────────────
+logs/
+*.log
+*.log.gz
+
+# ── Node.js / React (chat-ui) ─────────────────────────────────────────────
+**/node_modules/
+**/dist/
+**/.vite/
+**/package-lock.json
+
+# ── Python ────────────────────────────────────────────────────────────────
+**/__pycache__/
+*.py[cod]
+*.pyo
+.env
+
+# ── OS ────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Secrets — never commit ────────────────────────────────────────────────
+*.env
+application-local.yml
+application-secret.yml
+claude_desktop_config.json

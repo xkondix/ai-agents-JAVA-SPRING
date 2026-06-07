@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-100 font-sans;
+  }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-slate-900; }
+  ::-webkit-scrollbar-thumb { @apply bg-slate-600 rounded-full; }
+}
+
+@layer utilities {
+  .chat-bubble-user {
+    @apply bg-indigo-600 text-white rounded-2xl rounded-br-sm px-4 py-3 max-w-[75%] ml-auto;
+  }
+  .chat-bubble-agent {
+    @apply bg-slate-800 text-slate-100 rounded-2xl rounded-bl-sm px-4 py-3 max-w-[75%];
+  }
+  .typing-dot {
+    @apply w-2 h-2 rounded-full bg-slate-400 animate-bounce;
+  }
+}
