@@ -1,14 +1,14 @@
 /**
- * Wysyla wiadomosc do wybranego agenta.
- * Obsluguje:
- *   - zwykly JSON response
+ * Sends a message to the selected agent.
+ * Handles:
+ *   - plain JSON response
  *   - streaming (text/event-stream SSE)
  *
- * @param {object} agent    - obiekt z AGENTS
- * @param {string} message  - wiadomosc uzytkownika
- * @param {string} userId   - id sesji / uzytkownika
- * @param {function} onChunk - callback dla streaming (opcjonalny)
- * @returns {Promise<string>} - pelna odpowiedz
+ * @param {object} agent     - object from AGENTS config
+ * @param {string} message   - user message
+ * @param {string} userId    - session / user id
+ * @param {function} onChunk - callback for streaming (optional)
+ * @returns {Promise<string>} - full response
  */
 export async function sendMessage(agent, message, userId, onChunk) {
   const body = {
@@ -39,7 +39,7 @@ export async function sendMessage(agent, message, userId, onChunk) {
       const { done, value } = await reader.read()
       if (done) break
       const chunk = decoder.decode(value, { stream: true })
-      // parsuj SSE: "data: {...}"
+      // parse SSE: "data: {...}"
       for (const line of chunk.split('\n')) {
         if (line.startsWith('data:')) {
           try {
@@ -58,7 +58,7 @@ export async function sendMessage(agent, message, userId, onChunk) {
     return full
   }
 
-  // Common  JSON
+  // Plain JSON response
   const json = await res.json()
   return json.content ?? json.message ?? json.response ?? JSON.stringify(json)
 }

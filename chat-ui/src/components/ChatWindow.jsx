@@ -57,14 +57,14 @@ export default function ChatWindow({ agent }) {
           })
         })
       }
-      // jesli nie bylo streamingu - dodaj odpowiedz
+      // if no streaming — add response
       setMessages(prev => {
         const last = prev[prev.length - 1]
-        if (last?.role === 'assistant') return prev // juz dodane przez streaming
+        if (last?.role === 'assistant') return prev // already added by streaming
         return [...prev, { role: 'assistant', content: response, timestamp: Date.now() }]
       })
     } catch (err) {
-      addMessage('assistant', `Blad: ${err.message}`)
+      addMessage('assistant', `Error: ${err.message}`)
     } finally {
       setLoading(false)
     }
@@ -105,7 +105,7 @@ export default function ChatWindow({ agent }) {
         <button
           onClick={clearChat}
           className="p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-800 transition-colors"
-          title="Wyczysc chat"
+          title="Clear chat"
         >
           <Trash2 size={16} />
         </button>
@@ -123,7 +123,7 @@ export default function ChatWindow({ agent }) {
             </div>
             <p className="text-slate-400 text-sm font-medium">{agent.name}</p>
             <p className="text-slate-600 text-xs mt-1">{agent.description}</p>
-            <p className="text-slate-600 text-xs mt-4">Napisz wiadomosc zeby zaczac</p>
+            <p className="text-slate-600 text-xs mt-4">Type a message to start</p>
           </div>
         )}
         {messages.map((msg, i) => (
@@ -152,7 +152,7 @@ export default function ChatWindow({ agent }) {
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
             disabled={loading}
-            placeholder={`Napisz do ${agent.name}... (Enter = wyslij, Shift+Enter = nowa linia)`}
+            placeholder={`Write to ${agent.name}... (Enter = send, Shift+Enter = new line)`}
             rows={1}
             className="flex-1 bg-transparent text-sm text-slate-100 placeholder-slate-600
                        resize-none outline-none py-1.5 max-h-40 overflow-y-auto"

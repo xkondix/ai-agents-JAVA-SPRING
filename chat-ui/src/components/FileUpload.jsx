@@ -40,7 +40,7 @@ export default function FileUpload({ file, onFile, onClear, disabled }) {
           disabled={disabled}
           onClick={() => ref.current?.click()}
           className="p-2 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-40"
-          title="Dodaj plik lub obraz"
+          title="Add file or image"
         >
           <Paperclip size={18} />
         </button>

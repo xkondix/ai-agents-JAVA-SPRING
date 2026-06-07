@@ -1,9 +1,10 @@
-# Code MCP Server v2 (Spring AI starter)
+# Code MCP Server (Spring AI starter)
 
-MCP Server do edycji kodu projektu ai-agents-JAVA-SPRING.
-Uzywa oficjalnego podejscia Spring AI MCP starter.
+MCP Server exposing tools for reading, searching and editing files
+in the ai-agents-JAVA-SPRING project.
+Uses the official Spring AI MCP server starter approach.
 
-## Budowanie JAR
+## Building the JAR
 
 ```bash
 cd code-mcp-server
@@ -11,11 +12,11 @@ mvn clean package -DskipTests
 # JAR: target/code-mcp-server-1.0.0-SNAPSHOT.jar
 ```
 
-## Podlaczenie do Claude Desktop
+## Connecting to Claude Desktop
 
-**Plik:** `C:\Users\konra\AppData\Roaming\Claude\claude_desktop_config.json`
+**File:** `C:\Users\konra\AppData\Roaming\Claude\claude_desktop_config.json`
 
-Dodaj do istniejacego JSON (w sekcji mcpServers):
+Add to the existing JSON (under mcpServers):
 
 ```json
 "ai-agents-code": {
@@ -29,27 +30,27 @@ Dodaj do istniejacego JSON (w sekcji mcpServers):
 }
 ```
 
-Zrestartuj Claude Desktop — zobaczysz ikone mlotka w oknie czatu.
+Restart Claude Desktop — you will see a hammer icon in the chat window.
 
-## Dostepne narzedzia
+## Available tools
 
-| Narzedzie | Approval | Opis |
+| Tool | Approval | Description |
 |---|---|---|
-| `read_file` | Brak | Czyta plik |
-| `list_files` | Brak | Listuje katalog |
-| `get_project_structure` | Brak | Drzewo projektu |
-| `search_in_files` | Brak | Szuka tekstu w plikach |
-| `write_file` | **Wymagane** | Nadpisuje plik |
-| `create_file` | **Wymagane** | Tworzy nowy plik |
-| `move_file` | **Wymagane** | Przenosi/rename |
-| `delete_file` | **Podwojne** | Usuwa (nieodwracalne) |
+| `read_file` | None | Reads file content |
+| `list_files` | None | Lists directory contents |
+| `get_project_structure` | None | Project directory tree |
+| `search_in_files` | None | Searches text in files |
+| `write_file` | **Required** | Overwrites a file |
+| `create_file` | **Required** | Creates a new file |
+| `move_file` | **Required** | Moves/renames a file |
+| `delete_file` | **Double** | Deletes a file (irreversible) |
 
 ## Approval Flow
 
-Gdy Claude chce wykonac wrazliwa operacje:
-1. Serwer loguje: `[APPROVAL REQUIRED] id=abc123 ...`
-2. W logu widac URL do zatwierdzenia
-3. Zatwierdz przez REST lub Chat UI:
+When Claude wants to perform a sensitive operation:
+1. Server logs: `[APPROVAL REQUIRED] id=abc123 ...`
+2. The log shows the URL to approve
+3. Approve via REST or Chat UI:
 
 ```bash
 POST http://localhost:8086/approvals/{id}/approve
@@ -57,16 +58,16 @@ POST http://localhost:8086/approvals/{id}/reject
 GET  http://localhost:8086/approvals
 ```
 
-## Logi
+## Logs
 
-Logi ida do pliku (nie stdout — stdout jest zarezerwowany dla JSON-RPC):
+Logs go to file (not stdout — stdout is reserved for JSON-RPC):
 ```
 C:\Users\konra\Desktop\ai-agents-JAVA-SPRING\logs\code-mcp-server.log
 ```
 
-## Dodanie do projektu Maven
+## Adding to Maven project
 
-W glownym `pom.xml`:
+In the main `pom.xml`:
 ```xml
 <module>code-mcp-server</module>
 ```

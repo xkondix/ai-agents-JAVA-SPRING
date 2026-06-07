@@ -5,7 +5,7 @@ import { AGENTS } from '../agents.js'
  * Polls every agent for health every INTERVAL ms.
  * Returns a map { agentId -> 'up' | 'down' | 'checking' }
  */
-const INTERVAL = 15_000 // 15 sekund
+const INTERVAL = 15_000 // 15 seconds
 
 export function useAgentHealth() {
   const [status, setStatus] = useState(() =>

@@ -11,7 +11,7 @@ export default function TypingIndicator({ agentName, agentColor }) {
         <span className="typing-dot" style={{ animationDelay: '0ms' }} />
         <span className="typing-dot" style={{ animationDelay: '150ms' }} />
         <span className="typing-dot" style={{ animationDelay: '300ms' }} />
-        <span className="text-xs text-slate-500 ml-2">{agentName} pisze...</span>
+        <span className="text-xs text-slate-500 ml-2">{agentName} is typing...</span>
       </div>
     </div>
   )
