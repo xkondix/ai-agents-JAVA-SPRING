@@ -25,6 +25,7 @@
         <module>common</module>
         <module>mcp-server</module>
         <module>code-mcp-server</module>
+        <module>raw-agent</module>
         <module>langchain4j-agent-local</module>
         <module>langchain4j-agent-mcp</module>
         <module>spring-ai-agent-local</module>

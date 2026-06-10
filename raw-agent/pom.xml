@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.xkondix</groupId>
+        <artifactId>ai-agents-JAVA-SPRING</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>raw-agent</artifactId>
+    <name>Raw Agent - Pure agent loop without any AI framework</name>
+    <description>
+        The most important module for understanding how agents work.
+
+        NO LangChain4j. NO Spring AI. Just:
+          - Java HttpClient calling Ollama / OpenAI-compatible API
+          - Plain JSON serialization (Jackson)
+          - Manual while-loop: send -> check tool calls -> execute -> repeat
+          - Tool registration via simple Java records
+
+        This is EXACTLY what every framework does under the hood.
+        Compare this with langchain4j-agent-local and spring-ai-agent-local
+        to see what frameworks abstract away.
+
+        Port: 8090
+    </description>
+
+    <dependencies>
+
+        <!-- Spring Boot Web — only for REST controller and config -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Jackson — JSON serialization for API calls -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- Actuator — health check for Chat UI -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- SpringDoc OpenAPI -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
+        <!-- Common DTOs -->
+        <dependency>
+            <groupId>com.xkondix</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

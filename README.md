@@ -12,6 +12,7 @@ ai-agents-JAVA-SPRING/
 ├── common/                    # Shared DTOs (ChatRequest, ChatResponse)
 ├── mcp-server/                # Spring Boot MCP Server (port 8081)
 ├── code-mcp-server/           # MCP Server for project file access (port 8086)
+├── raw-agent/                 # Pure agent loop — no AI framework (port 8090)
 ├── langchain4j-agent-local/   # LangChain4j: raw loop + AiServices + local @Tool (port 8082)
 ├── langchain4j-agent-mcp/     # LangChain4j: MCP client orchestrator (port 8083)
 ├── spring-ai-agent-local/     # Spring AI: ChatClient + Advisors + local @Tool (port 8084)
@@ -40,6 +41,7 @@ mvn clean install -DskipTests
 # 5. Start modules (each in separate terminal)
 cd mcp-server              && mvn spring-boot:run
 cd code-mcp-server         && mvn spring-boot:run
+cd raw-agent               && mvn spring-boot:run
 cd langchain4j-agent-local && mvn spring-boot:run
 cd langchain4j-agent-mcp   && mvn spring-boot:run
 cd spring-ai-agent-local   && mvn spring-boot:run
@@ -59,16 +61,17 @@ cd chat-ui && npm run dev
 | spring-ai-agent-local   | 8084 | Spring AI ChatClient + Advisors          |
 | spring-ai-agent-mcp     | 8085 | Spring AI MCP orchestrator               |
 | code-mcp-server         | 8086 | MCP tools for project file access        |
+| raw-agent               | 8090 | Pure agent loop — no AI framework        |
 | chat-ui                 | 3000 | React chat interface                     |
 
 ## Agent Architecture
 
 ```
-langchain4j-agent-local  →  local @Tool methods (same process)
-langchain4j-agent-mcp    →  MCP clients → mcp-server + code-mcp-server + Python agent
-
-spring-ai-agent-local    →  local @Tool methods (same process)
-spring-ai-agent-mcp      →  MCP clients → mcp-server + code-mcp-server (autoconfigured)
+raw-agent               →  pure HTTP + Jackson, manual while-loop, zero AI frameworks
+langchain4j-agent-local →  local @Tool methods (same process)
+langchain4j-agent-mcp   →  MCP clients → mcp-server + code-mcp-server + Python agent
+spring-ai-agent-local   →  local @Tool methods (same process)
+spring-ai-agent-mcp     →  MCP clients → mcp-server + code-mcp-server (autoconfigured)
 ```
 
 ## Claude Desktop MCP Config
@@ -98,13 +101,13 @@ File: `%APPDATA%\Claude\claude_desktop_config.json`
 3. Tool calls in response? Execute → add results to context → go to 2
 4. No tool calls? Return final answer
 
-### LangChain4j vs Spring AI
+### Framework comparison
 
-| Feature          | LangChain4j               | Spring AI                     |
-|------------------|---------------------------|-------------------------------|
-| Loop visibility  | Hidden (AiServices)       | More explicit (ChatClient)    |
-| Tool definition  | @Tool annotation          | @Tool annotation (similar)    |
-| Interceptors     | Limited                   | Advisor pattern (powerful)    |
-| MCP client       | Manual @Bean config       | Autoconfigured from yml       |
-| Memory           | ChatMemory                | Repository pattern            |
-| Versions         | 1.15.1                    | 1.0.3                         |
+| Feature          | raw-agent      | LangChain4j            | Spring AI                     |
+|------------------|----------------|------------------------|-------------------------------|
+| Loop visibility  | Fully visible  | Hidden (AiServices)    | More explicit (ChatClient)    |
+| Tool definition  | Manual JSON    | @Tool annotation       | @Tool annotation              |
+| HTTP calls       | java.net.http  | Hidden                 | Hidden                        |
+| Interceptors     | Manual         | Limited                | Advisor pattern               |
+| MCP support      | No             | langchain4j-mcp        | spring-ai-starter-mcp-client  |
+| Lines of code    | Most           | Least                  | Medium                        |

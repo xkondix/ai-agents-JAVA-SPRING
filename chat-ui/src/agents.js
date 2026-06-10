@@ -5,6 +5,20 @@
  */
 export const AGENTS = [
   {
+    id:          'raw-agent',
+    name:        'Raw Agent',
+    description: 'Pure loop — no LangChain4j, no Spring AI, just HTTP',
+    color:       '#EF4444',
+    colorClass:  'bg-red-500',
+    borderClass: 'border-red-500',
+    textClass:   'text-red-400',
+    proxyPath:   '/api/raw-agent',
+    chatPath:    '/api/raw-agent/api/v1/agent/chat',
+    healthPath:  '/api/raw-agent/actuator/health',
+    chatField:   'message',
+    icon:        'RAW',
+  },
+  {
     id:          'lc4j-agent-local',
     name:        'LangChain4j Agent Local',
     description: 'Raw loop + AiServices + local @Tool',
