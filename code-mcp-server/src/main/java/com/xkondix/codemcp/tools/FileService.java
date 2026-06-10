@@ -68,10 +68,65 @@ public class FileService {
         Path fromPath = resolveAndValidate(from);
         Path toPath   = resolveAndValidate(to);
         if (!Files.exists(fromPath)) return "ERROR: Source not found: " + from;
+        if (Files.isDirectory(fromPath)) return "ERROR: Use move_directory for directories.";
         Files.createDirectories(toPath.getParent());
         Files.move(fromPath, toPath, StandardCopyOption.REPLACE_EXISTING);
         log.info("move_file: {} -> {}", from, to);
         return "OK: Moved " + from + " -> " + to;
+    }
+
+    /**
+     * Moves or renames a directory recursively.
+     * Uses Files.move() which is atomic on same filesystem (rename).
+     * Falls back to copy-then-delete for cross-filesystem moves.
+     */
+    public String moveDirectory(String from, String to) throws IOException {
+        Path fromPath = resolveAndValidate(from);
+        Path toPath   = resolveAndValidate(to);
+        if (!Files.exists(fromPath))    return "ERROR: Source not found: " + from;
+        if (!Files.isDirectory(fromPath)) return "ERROR: Source is not a directory: " + from;
+        if (Files.exists(toPath))       return "ERROR: Destination already exists: " + to;
+        try {
+            // Try atomic rename first (same filesystem)
+            Files.move(fromPath, toPath, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException e) {
+            // Cross-filesystem: copy recursively then delete source
+            copyDirectory(fromPath, toPath);
+            deleteDirectory(fromPath);
+        }
+        log.warn("move_directory: {} -> {}", from, to);
+        return "OK: Directory moved: " + from + " -> " + to;
+    }
+
+    private void copyDirectory(Path source, Path target) throws IOException {
+        Files.walkFileTree(source, new SimpleFileVisitor<>() {
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes a)
+                    throws IOException {
+                Files.createDirectories(target.resolve(source.relativize(dir)));
+                return FileVisitResult.CONTINUE;
+            }
+            public FileVisitResult visitFile(Path file, BasicFileAttributes a)
+                    throws IOException {
+                Files.copy(file, target.resolve(source.relativize(file)),
+                        StandardCopyOption.REPLACE_EXISTING);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    private void deleteDirectory(Path dir) throws IOException {
+        Files.walkFileTree(dir, new SimpleFileVisitor<>() {
+            public FileVisitResult visitFile(Path file, BasicFileAttributes a)
+                    throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+            public FileVisitResult postVisitDirectory(Path d, IOException e)
+                    throws IOException {
+                Files.delete(d);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     public String listFiles(String relativePath) throws IOException {

@@ -9,7 +9,7 @@ const STATUS_DOT = {
 const STATUS_LABEL = {
   up:       'Online',
   down:     'Offline',
-  checking: 'Sprawdzam...',
+  checking: 'Checking...',
 }
 
 export default function AgentSelector({ selected, onSelect, status }) {
@@ -39,7 +39,7 @@ export default function AgentSelector({ selected, onSelect, status }) {
               ].join(' ')}
               style={active ? { borderColor: agent.color } : {}}
             >
-              {/* ikona */}
+              {/* icon */}
               <span
                 className="text-[10px] font-bold px-1.5 py-0.5 rounded"
                 style={{ backgroundColor: agent.color + '33', color: agent.color }}

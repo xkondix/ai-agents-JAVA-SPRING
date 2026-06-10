@@ -5,12 +5,13 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    // Proxy dla agentow - omija CORS w dev
+    // Proxy for agents — bypasses CORS in dev
     proxy: {
-      '/api/lc4j-agent':    { target: 'http://localhost:8082', rewrite: p => p.replace(/^\/api\/lc4j-agent/, ''),    changeOrigin: true },
-      '/api/lc4j-mcp':      { target: 'http://localhost:8083', rewrite: p => p.replace(/^\/api\/lc4j-mcp/, ''),      changeOrigin: true },
-      '/api/spring-agent':  { target: 'http://localhost:8084', rewrite: p => p.replace(/^\/api\/spring-agent/, ''),  changeOrigin: true },
-      '/api/spring-mcp':    { target: 'http://localhost:8085', rewrite: p => p.replace(/^\/api\/spring-mcp/, ''),    changeOrigin: true },
+      '/api/raw-agent':          { target: 'http://localhost:8090', rewrite: p => p.replace(/^\/api\/raw-agent/, ''),          changeOrigin: true },
+      '/api/lc4j-agent-local':   { target: 'http://localhost:8082', rewrite: p => p.replace(/^\/api\/lc4j-agent-local/, ''),   changeOrigin: true },
+      '/api/lc4j-agent-mcp':     { target: 'http://localhost:8083', rewrite: p => p.replace(/^\/api\/lc4j-agent-mcp/, ''),     changeOrigin: true },
+      '/api/spring-agent-local': { target: 'http://localhost:8084', rewrite: p => p.replace(/^\/api\/spring-agent-local/, ''), changeOrigin: true },
+      '/api/spring-agent-mcp':   { target: 'http://localhost:8085', rewrite: p => p.replace(/^\/api\/spring-agent-mcp/, ''),   changeOrigin: true },
     }
   }
 })

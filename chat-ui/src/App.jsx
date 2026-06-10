@@ -29,12 +29,12 @@ export default function App() {
           </div>
           <div className="flex items-center justify-between mt-2">
             <p className="text-xs text-slate-600">
-              {upCount} / {Object.keys(status).length} agentow online
+              {upCount} / {Object.keys(status).length} agents online
             </p>
             <button
               onClick={refresh}
               className="p-1 rounded text-slate-600 hover:text-slate-400 transition-colors"
-              title="Odswiez status"
+              title="Refresh status"
             >
               <RefreshCw size={12} />
             </button>
@@ -53,7 +53,7 @@ export default function App() {
         {/* footer */}
         <div className="px-4 py-3 border-t border-slate-800">
           <p className="text-[10px] text-slate-700 text-center">
-            Konrad Kowalczyk · xkondix · 2025
+            Konrad Kowalczyk · xkondix · 2026
           </p>
         </div>
       </div>
@@ -68,11 +68,11 @@ export default function App() {
               <Bot size={28} className="text-slate-500" />
             </div>
             <h2 className="text-lg font-semibold text-slate-300 mb-2">
-              Wybierz agenta
+              Select an agent
             </h2>
             <p className="text-sm text-slate-600 max-w-sm">
-              Uruchom przynajmniej jednego agenta z projektu,
-              a pojawi sie tutaj automatycznie.
+              Start at least one agent from the project
+              and it will appear here automatically.
             </p>
             <div className="mt-6 text-xs text-slate-700 space-y-1">
               <p>langchain4j-agent → port 8082</p>
