@@ -1,0 +1,34 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: langchain4j-agent-mcp
+
+langchain4j:
+  ollama:
+    chat-model:
+      base-url: http://localhost:11434
+      model-name: llama3.1:8b
+      temperature: 0.3
+      timeout: 120s
+      log-requests: true
+      log-responses: true
+  # Uncomment to use OpenAI / OpenRouter instead:
+  # open-ai:
+  #   chat-model:
+  #     api-key: ${OPENAI_API_KEY}
+  #     base-url: https://openrouter.ai/api/v1
+  #     model-name: anthropic/claude-sonnet-4-5
+  #     temperature: 0.3
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.xkondix: DEBUG
+    dev.langchain4j: INFO
