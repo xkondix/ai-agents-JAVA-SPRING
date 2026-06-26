@@ -17,15 +17,15 @@ import java.util.List;
  * exactly this loop under the hood.
  *
  * Step by step:
- *
  *   1. Add user message to history
  *   2. Send history + available tools to LLM via HTTP
  *   3. Did the model request tool calls?
  *      YES -> execute each tool, add results to history, go to step 2
  *      NO  -> return the model answer to the user
  *
- * Safety: maxIterations prevents infinite loops
- * (model could keep calling tools forever without it).
+ * Safety: maxIterations prevents infinite loops.
+ * Graceful degradation: if LLM is unavailable, returns a readable error
+ * instead of propagating a stack trace to the user.
  */
 @Slf4j
 @Service
@@ -38,7 +38,23 @@ public class RawAgentLoop {
     private static final int MAX_ITERATIONS = 10;
 
     public String chat(String userMessage) {
+        try {
+            return doChat(userMessage);
+        } catch (RuntimeException e) {
+            // Graceful degradation — LLM unavailable or API error
+            log.error("[LOOP] LLM call failed: {}", e.getMessage());
+            if (e.getMessage() != null && e.getMessage().contains("Connection refused")) {
+                return "LLM is unavailable. Please check that Ollama is running on port 11434. " +
+                       "Run: ollama serve";
+            }
+            if (e.getMessage() != null && e.getMessage().contains("LLM API error")) {
+                return "LLM returned an error: " + e.getMessage();
+            }
+            return "Agent error: " + e.getMessage();
+        }
+    }
 
+    private String doChat(String userMessage) {
         // ── Step 1: Initialize conversation history ───────────────────────
         List<Message> history = new ArrayList<>();
         history.add(Message.system(
@@ -61,10 +77,8 @@ public class RawAgentLoop {
                 return "Error: empty response from model.";
             }
 
-            // Add assistant message to history
             history.add(Message.assistant(message.content(), message.toolCalls()));
 
-            // Log token usage if available
             if (response.usage() != null) {
                 log.info("[LOOP] Tokens: input={} output={} total={}",
                         response.usage().promptTokens(),
@@ -74,27 +88,18 @@ public class RawAgentLoop {
 
             // ── Step 3: Tool calls? ───────────────────────────────────────
             if (!response.hasToolCalls()) {
-                // No tool calls — final answer
                 log.info("[LOOP] Done after {} iteration(s)", i);
                 return message.content() != null ? message.content() : "";
             }
 
-            // Execute each tool call and add results to history
             for (ToolCall toolCall : message.toolCalls()) {
                 String toolName = toolCall.function().name();
                 String toolArgs = toolCall.function().arguments();
-
                 log.info("[LOOP] Tool call: {} args={}", toolName, toolArgs);
-
                 String result = tools.execute(toolName, toolArgs);
-
                 log.info("[LOOP] Tool result: {}", result);
-
-                // Add tool result to history so the model can use it
                 history.add(Message.tool(toolCall.id(), result));
             }
-
-            // Go back to step 2 with updated history
         }
 
         return "Max iterations (" + MAX_ITERATIONS + ") reached.";

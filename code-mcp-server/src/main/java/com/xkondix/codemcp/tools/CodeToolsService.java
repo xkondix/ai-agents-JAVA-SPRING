@@ -31,7 +31,7 @@ public class CodeToolsService {
     @Tool(description = """
             Read the content of a file in the ai-agents-JAVA-SPRING project.
             Path must be relative to project root.
-            Example: langchain4j-agent/src/main/resources/application.yml
+            Example: langchain4j-agent-local/src/main/resources/application.yml
             Returns full file content as text.
             """)
     public String read_file(
@@ -98,6 +98,7 @@ public class CodeToolsService {
             REQUIRES HUMAN APPROVAL.
             Overwrite an existing file with new content.
             The operation pauses until approved at POST /approvals/{id}/approve
+            or via Chat UI at http://localhost:3000/approvals
             Use create_file for new files.
             """)
     public String write_file(
@@ -105,11 +106,11 @@ public class CodeToolsService {
             @ToolParam(description = "Full new content of the file") String content) {
         log.warn("[TOOL] write_file PENDING APPROVAL: {}", path);
         String preview = content.length() > 300 ? content.substring(0, 300) + "..." : content;
-//        boolean approved = approvalService.requestApproval(
-//                ApprovalType.WRITE_FILE, "write_file",
-//                "Overwrite file: " + path,
-//                "PATH: " + path + "\nPREVIEW:\n" + preview);
-//        if (!approved) return "REJECTED: Operation cancelled.";
+        boolean approved = approvalService.requestApproval(
+                ApprovalType.WRITE_FILE, "write_file",
+                "Overwrite file: " + path,
+                "PATH: " + path + "\nPREVIEW:\n" + preview);
+        if (!approved) return "REJECTED: Operation cancelled.";
         try {
             return fileService.writeFile(path, content);
         } catch (Exception e) {
@@ -122,17 +123,18 @@ public class CodeToolsService {
             Create a new file with given content.
             Fails if file already exists — use write_file to overwrite.
             The operation pauses until approved at POST /approvals/{id}/approve
+            or via Chat UI at http://localhost:3000/approvals
             """)
     public String create_file(
             @ToolParam(description = "Relative path for the new file") String path,
             @ToolParam(description = "Initial file content") String content) {
         log.warn("[TOOL] create_file PENDING APPROVAL: {}", path);
         String preview = content.length() > 200 ? content.substring(0, 200) + "..." : content;
-//        boolean approved = approvalService.requestApproval(
-//                ApprovalType.CREATE_FILE, "create_file",
-//                "Create new file: " + path,
-//                "PATH: " + path + "\nCONTENT:\n" + preview);
-//        if (!approved) return "REJECTED: Operation cancelled.";
+        boolean approved = approvalService.requestApproval(
+                ApprovalType.CREATE_FILE, "create_file",
+                "Create new file: " + path,
+                "PATH: " + path + "\nCONTENT:\n" + preview);
+        if (!approved) return "REJECTED: Operation cancelled.";
         try {
             return fileService.createFile(path, content);
         } catch (Exception e) {
@@ -150,11 +152,11 @@ public class CodeToolsService {
             @ToolParam(description = "Source relative path") String from_path,
             @ToolParam(description = "Destination relative path") String to_path) {
         log.warn("[TOOL] move_file PENDING APPROVAL: {} -> {}", from_path, to_path);
-//        boolean approved = approvalService.requestApproval(
-//                ApprovalType.MOVE_FILE, "move_file",
-//                "Move: " + from_path + " -> " + to_path,
-//                "FROM: " + from_path + "\nTO: " + to_path);
-//        if (!approved) return "REJECTED: Operation cancelled.";
+        boolean approved = approvalService.requestApproval(
+                ApprovalType.MOVE_FILE, "move_file",
+                "Move: " + from_path + " -> " + to_path,
+                "FROM: " + from_path + "\nTO: " + to_path);
+        if (!approved) return "REJECTED: Operation cancelled.";
         try {
             return fileService.moveFile(from_path, to_path);
         } catch (Exception e) {
@@ -167,18 +169,17 @@ public class CodeToolsService {
             Move or rename a directory within the project.
             Works recursively — moves all contents.
             For files use move_file instead.
-            The operation pauses until approved at POST /approvals/{id}/approve
             """)
     public String move_directory(
             @ToolParam(description = "Source relative directory path") String from_path,
             @ToolParam(description = "Destination relative directory path") String to_path) {
         log.warn("[TOOL] move_directory PENDING APPROVAL: {} -> {}", from_path, to_path);
-//        boolean approved = approvalService.requestApproval(
-//                ApprovalType.MOVE_FILE, "move_directory",
-//                "Move directory: " + from_path + " -> " + to_path,
-//                "FROM: " + from_path + "\nTO:   " + to_path
-//                        + "\nThis will move the entire directory and all its contents.");
-//        if (!approved) return "REJECTED: Operation cancelled.";
+        boolean approved = approvalService.requestApproval(
+                ApprovalType.MOVE_FILE, "move_directory",
+                "Move directory: " + from_path + " -> " + to_path,
+                "FROM: " + from_path + "\nTO:   " + to_path
+                        + "\nThis will move the entire directory and all its contents.");
+        if (!approved) return "REJECTED: Operation cancelled.";
         try {
             return fileService.moveDirectory(from_path, to_path);
         } catch (Exception e) {
@@ -201,18 +202,18 @@ public class CodeToolsService {
             return "ERROR: confirm field must be exactly: DELETE";
         }
         log.warn("[TOOL] delete_file PENDING APPROVAL (1/2): {}", path);
-//        boolean first = approvalService.requestApproval(
-//                ApprovalType.DELETE_FILE, "delete_file",
-//                "[1/2] DELETE: " + path,
-//                "PATH: " + path + "\nThis is the FIRST of TWO required approvals.");
-//        if (!first) return "REJECTED: Delete cancelled at first confirmation.";
+        boolean first = approvalService.requestApproval(
+                ApprovalType.DELETE_FILE, "delete_file",
+                "[1/2] DELETE: " + path,
+                "PATH: " + path + "\nThis is the FIRST of TWO required approvals.");
+        if (!first) return "REJECTED: Delete cancelled at first confirmation.";
 
         log.warn("[TOOL] delete_file PENDING APPROVAL (2/2): {}", path);
-//        boolean second = approvalService.requestApproval(
-//                ApprovalType.DELETE_FILE, "delete_file",
-//                "[2/2] FINAL CONFIRM DELETE: " + path,
-//                "PATH: " + path + "\nFINAL confirmation. File will be PERMANENTLY deleted.");
-//        if (!second) return "REJECTED: Delete cancelled at final confirmation.";
+        boolean second = approvalService.requestApproval(
+                ApprovalType.DELETE_FILE, "delete_file",
+                "[2/2] FINAL CONFIRM DELETE: " + path,
+                "PATH: " + path + "\nFINAL confirmation. File will be PERMANENTLY deleted.");
+        if (!second) return "REJECTED: Delete cancelled at final confirmation.";
 
         try {
             return fileService.deleteFile(path);

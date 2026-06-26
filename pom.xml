@@ -37,8 +37,10 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>3.5.0</spring-boot.version>
-        <langchain4j.version>1.15.1</langchain4j.version>
-        <spring-ai.version>1.0.3</spring-ai.version>
+        <!-- Updated from 1.15.1 → 1.16.3 -->
+        <langchain4j.version>1.16.3</langchain4j.version>
+        <!-- Updated from 1.0.3 → 1.1.4 (MCP, OTel GenAI, prompt caching) -->
+        <spring-ai.version>1.1.4</spring-ai.version>
         <mcp-sdk.version>0.10.0</mcp-sdk.version>
         <lombok.version>1.18.34</lombok.version>
         <springdoc.version>2.8.9</springdoc.version>
@@ -103,6 +105,20 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <!-- ── Observability — shared by ALL modules ──────────────────── -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
     </dependencies>
 

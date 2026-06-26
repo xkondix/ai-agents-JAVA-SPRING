@@ -11,11 +11,21 @@ spring:
         version: 1.0.0
         transport: SYNC_HTTP_SSE
 
+# ── Observability ─────────────────────────────────────────────────────────
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
+    metrics:
+      export:
+        url: http://localhost:4318/v1/metrics
 
 logging:
   level:

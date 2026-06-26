@@ -1,5 +1,8 @@
 version: '3.8'
+
 services:
+
+  # Local LLM server
   ollama:
     image: ollama/ollama
     container_name: ollama
@@ -9,6 +12,7 @@ services:
     volumes:
       - ollama:/root/.ollama
 
+  # Chat memory (persistent)
   redis:
     image: redis:latest
     container_name: redis
@@ -16,12 +20,14 @@ services:
       - "6379:6379"
     restart: unless-stopped
 
+  # Vector store (RAG)
   chroma:
     image: ghcr.io/chroma-core/chroma:0.6.4.dev226
     container_name: chroma
     ports:
       - "8000:8000"
 
+  # Jira — local instance for integration demos (Presentation 2)
   jira-db:
     image: postgres:15
     container_name: jira-db
@@ -47,6 +53,20 @@ services:
       - jira-data:/var/atlassian/application-data/jira
     depends_on:
       - jira-db
+    restart: unless-stopped
+
+  # Observability stack — Grafana LGTM (Presentation 3)
+  # Loki (logs) + Grafana (dashboards) + Tempo (traces) + Prometheus (metrics)
+  grafana-lgtm:
+    image: grafana/otel-lgtm:latest
+    container_name: lgtm
+    ports:
+      - "3100:3000"   # Grafana UI     → http://localhost:3100 (admin/admin)
+      - "4317:4317"   # OTLP gRPC      → OpenTelemetry collector
+      - "4318:4318"   # OTLP HTTP      → OpenTelemetry collector
+      - "9090:9090"   # Prometheus     → http://localhost:9090
+      - "3201:3200"   # Tempo          → http://localhost:3201
+      - "4040:4040"   # Pyroscope      → profiling
     restart: unless-stopped
 
 volumes:

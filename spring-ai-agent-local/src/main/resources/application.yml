@@ -19,20 +19,27 @@ spring:
         options:
           model: gemma3:4b
           temperature: 0.3
-  # Uncomment to use OpenAI / OpenRouter instead:
-  # ai:
-  #   openai:
-  #     api-key: ${OPENAI_API_KEY}
-  #     base-url: https://openrouter.ai/api/v1
-  #     chat:
-  #       options:
-  #         model: anthropic/claude-sonnet-4-5
+    # Spring AI 1.1+ — GenAI Semantic Conventions (OTel)
+    chat:
+      observations:
+        include-prompt: true
+        include-completion: true
 
+# ── Observability ─────────────────────────────────────────────────────────
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
+    metrics:
+      export:
+        url: http://localhost:4318/v1/metrics
 
 logging:
   level:

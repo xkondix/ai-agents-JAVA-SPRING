@@ -11,13 +11,11 @@ import org.springframework.stereotype.Service;
  * Spring AI Orchestrator using MCP tools.
  *
  * Comparison with LangChain4j OrchestratorService:
+ *   LangChain4j: McpToolProvider -> toolProvider() in AiServices
+ *   Spring AI:   SyncMcpToolCallbackProvider -> ToolCallback[] -> .tools(callbacks)
  *
- *   LangChain4j:
- *     McpToolProvider -> toolProvider(toolProvider) in AiServices
- *
- *   Spring AI:
- *     SyncMcpToolCallbackProvider -> ToolCallback[] -> .tools(callbacks)
- *     More explicit — easier to inspect which tools are registered.
+ * Spring AI approach is more explicit — easier to inspect registered tools.
+ * MCP clients are autoconfigured from application.yml (no manual @Bean needed).
  *
  * Connected MCP servers (configured in application.yml):
  *   - java-mcp-server  (port 8081) — game stats, knowledge base, weather
@@ -37,10 +35,10 @@ public class SpringAiOrchestratorService {
         return chatClient.prompt()
                 .system("""
                         You are an orchestrator agent.
-                        You have access to tools from multiple MCP servers:
-                        - java-mcp-server tools:  get_game_stats, save_note,
+                        You have access to tools from two MCP servers:
+                        - java-mcp-server tools: get_game_stats, save_note,
                                                   search_notes, get_weather
-                        - code-mcp-server tools:  read_file, list_files,
+                        - code-mcp-server tools: read_file, list_files,
                                                   get_project_structure, search_in_files,
                                                   write_file, create_file, move_file, delete_file
                         Use the most appropriate tool for each task.
