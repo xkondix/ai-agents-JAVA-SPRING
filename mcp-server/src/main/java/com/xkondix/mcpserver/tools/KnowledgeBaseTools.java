@@ -1,81 +1,105 @@
 package com.xkondix.mcpserver.tools;
 
-import io.modelcontextprotocol.server.McpServerFeatures;
-import io.modelcontextprotocol.spec.McpSchema;
+import com.xkondix.mcpserver.approval.ApprovalService;
+import com.xkondix.mcpserver.approval.ApprovalType;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.stereotype.Service;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Knowledge base tools exposed via MCP.
+ * In-memory storage — data is lost on restart.
+ * For production: replace with Redis or a database.
+ *
+ * Spring AI @Tool approach — JSON Schema generated automatically.
+ *
+ * Demonstrates the Human-in-the-loop Approval Flow:
+ *   - save_note   : requires approval before writing
+ *   - delete_note : requires approval before deleting
+ *   - search_notes: safe, no approval
+ *
+ * This works here because mcp-server runs over HTTP (SYNC_HTTP_SSE), so the
+ * Approval REST API on :8081 is reachable and approve/reject can unblock the
+ * waiting tool call. (The STDIO-based code-mcp-server cannot do this — see its
+ * README.)
+ */
 @Slf4j
-@Component
+@Service
+@RequiredArgsConstructor
 public class KnowledgeBaseTools {
 
+    private final ApprovalService approvalService;
+
+    // In-memory store — mock for demo purposes
     private final Map<String, String> notes = new ConcurrentHashMap<>();
 
-    public McpServerFeatures.SyncToolSpecification getSaveNoteTool() {
+    @Tool(description = """
+            REQUIRES HUMAN APPROVAL.
+            Save a note to the knowledge base.
+            The operation pauses until approved at http://localhost:3000/approvals
+            Returns the generated note ID, or REJECTED if cancelled.
+            """)
+    public String save_note(
+            @ToolParam(description = "Note title") String title,
+            @ToolParam(description = "Note content") String content) {
+        log.info("[MCP] save_note PENDING APPROVAL title={}", title);
 
-        String schema = """
-                {
-                  "type": "object",
-                  "properties": {
-                    "title":   { "type": "string", "description": "Note title" },
-                    "content": { "type": "string", "description": "Note content" }
-                  },
-                  "required": ["title", "content"]
-                }
-                """;
+        boolean approved = approvalService.requestApproval(
+                ApprovalType.SAVE_NOTE, "save_note",
+                "Save note: " + title,
+                "TITLE: " + title + "\nCONTENT:\n" + content);
 
-        return new McpServerFeatures.SyncToolSpecification(
-                new McpSchema.Tool(
-                        "save_note",
-                        "Save a note to the knowledge base. Returns the note ID.",
-                        schema),
-                (exchange, args) -> {
-                    String title   = (String) args.get("title");
-                    String content = (String) args.get("content");
-                    String id      = "note-" + Instant.now().toEpochMilli();
-                    notes.put(id, "[" + title + "] " + content);
-                    log.info("Note saved: id={} title={}", id, title);
-                    return McpSchema.CallToolResult.builder()
-                            .content(List.of(new McpSchema.TextContent("Saved: " + id)))
-                            .build();
-                }
-        );
+        if (!approved) return "REJECTED: Note was not saved.";
+
+        String id = "note-" + Instant.now().toEpochMilli();
+        notes.put(id, "[" + title + "] " + content);
+        log.info("[MCP] save_note id={} title={}", id, title);
+        return "Saved: " + id;
     }
 
-    public McpServerFeatures.SyncToolSpecification getSearchNotesTool() {
+    @Tool(description = """
+            REQUIRES HUMAN APPROVAL.
+            Delete a note from the knowledge base by its ID.
+            The operation pauses until approved at http://localhost:3000/approvals
+            Returns confirmation, or REJECTED if cancelled.
+            """)
+    public String delete_note(
+            @ToolParam(description = "Note ID to delete") String id) {
+        log.info("[MCP] delete_note PENDING APPROVAL id={}", id);
 
-        String schema = """
-                {
-                  "type": "object",
-                  "properties": {
-                    "query": { "type": "string", "description": "Search keyword" }
-                  },
-                  "required": ["query"]
-                }
-                """;
+        if (!notes.containsKey(id)) {
+            return "ERROR: No note found with id: " + id;
+        }
 
-        return new McpServerFeatures.SyncToolSpecification(
-                new McpSchema.Tool(
-                        "search_notes",
-                        "Search notes in the knowledge base by keyword.",
-                        schema),
-                (exchange, args) -> {
-                    String q = (String) args.get("query");
-                    String result = notes.entrySet().stream()
-                            .filter(e -> e.getValue().toLowerCase()
-                                    .contains(q.toLowerCase()))
-                            .map(e -> e.getKey() + ": " + e.getValue())
-                            .reduce("", (a, b) -> a + "\n" + b);
-                    String out = result.isBlank()
-                            ? "No notes found for: " + q : result;
-                    return McpSchema.CallToolResult.builder()
-                            .content(List.of(new McpSchema.TextContent(out)))
-                            .build();
-                }
-        );
+        boolean approved = approvalService.requestApproval(
+                ApprovalType.DELETE_NOTE, "delete_note",
+                "Delete note: " + id,
+                "ID: " + id + "\nCONTENT: " + notes.get(id));
+
+        if (!approved) return "REJECTED: Note was not deleted.";
+
+        notes.remove(id);
+        log.info("[MCP] delete_note id={} deleted", id);
+        return "Deleted: " + id;
+    }
+
+    @Tool(description = """
+            Search notes in the knowledge base by keyword (case-insensitive).
+            Safe operation — no approval required.
+            Returns matching notes with their IDs.
+            """)
+    public String search_notes(
+            @ToolParam(description = "Search keyword") String query) {
+        log.info("[MCP] search_notes query={}", query);
+        String result = notes.entrySet().stream()
+                .filter(e -> e.getValue().toLowerCase().contains(query.toLowerCase()))
+                .map(e -> e.getKey() + ": " + e.getValue())
+                .reduce("", (a, b) -> a + "\n" + b);
+        return result.isBlank() ? "No notes found for: " + query : result.trim();
     }
 }

@@ -14,46 +14,42 @@
     <artifactId>mcp-server</artifactId>
     <name>MCP Server - Spring Boot MCP tools provider</name>
     <description>
-        Standalone Spring Boot application that exposes tools via MCP protocol
-        (HTTP/SSE transport). Both LangChain4j and Spring AI agents connect to
-        this server as an external tool provider.
+        Standalone Spring Boot application that exposes tools via MCP protocol.
+        Both LangChain4j and Spring AI agents connect to this server as an
+        external tool provider via HTTP/SSE or Streamable HTTP.
 
         Tools exposed:
-        - get_game_stats     : fetch SQLite game statistics
-        - save_note          : save a note to the knowledge base
-        - get_weather        : mock weather tool (demo)
-        - analyze_sentiment  : simple sentiment analysis
+        - get_game_stats  : fetch game statistics
+        - save_note       : save a note to the knowledge base
+        - search_notes    : search notes in the knowledge base
+        - get_weather     : mock weather tool (demo)
 
-        Transport: HTTP/SSE  at /mcp/sse
         Port: 8081
+
+        Spring AI 1.1.4 notes:
+          - Use spring-ai-starter-mcp-server-webmvc (NOT io.modelcontextprotocol.sdk:mcp-spring-webmvc)
+          - The low-level mcp-spring-webmvc is a transitive dependency managed by Spring AI BOM
+          - Do NOT declare mcp-spring-webmvc or mcp-bom explicitly
     </description>
 
     <dependencies>
 
-        <!-- Spring Boot Web (for SSE/HTTP transport) -->
+        <!-- Spring Boot Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- MCP SDK - Server (Spring WebMVC integration) -->
+        <!--
+            Spring AI MCP Server WebMVC starter.
+            This is the correct Spring AI 1.1.x way to expose MCP tools via HTTP.
+            Transitively provides mcp-spring-webmvc at the correct version (managed by BOM).
+            Do NOT use io.modelcontextprotocol.sdk:mcp-spring-webmvc directly.
+        -->
         <dependency>
-            <groupId>io.modelcontextprotocol.sdk</groupId>
-            <artifactId>mcp-spring-webmvc</artifactId>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
         </dependency>
-
-        <!-- SQLite for game stats storage -->
-<!--        <dependency>-->
-<!--            <groupId>org.xerial</groupId>-->
-<!--            <artifactId>sqlite-jdbc</artifactId>-->
-<!--            <version>3.47.1.0</version>-->
-<!--        </dependency>-->
-
-        <!-- Spring Data JPA (optional, for SQLite) -->
-<!--        <dependency>-->
-<!--            <groupId>org.springframework.boot</groupId>-->
-<!--            <artifactId>spring-boot-starter-data-jpa</artifactId>-->
-<!--        </dependency>-->
 
         <!-- Actuator for health checks -->
         <dependency>
