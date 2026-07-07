@@ -21,22 +21,35 @@ spring:
         options:
           model: llama3.1:8b
           temperature: 0.3
+    # Spring AI 1.1+ — GenAI Semantic Conventions (OTel)
+    chat:
+      observations:
+        include-prompt: true
+        include-completion: true
     mcp:
       client:
         enabled: true
         connections:
-          # MCP Server — game stats, knowledge base, weather tools
           java-mcp-server:
             url: http://localhost:8081/mcp
-          # Code MCP Server — project file access and editing tools
           code-mcp-server:
             url: http://localhost:8086/mcp
 
+# ── Observability ─────────────────────────────────────────────────────────
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
+    metrics:
+      export:
+        url: http://localhost:4318/v1/metrics
 
 logging:
   level:

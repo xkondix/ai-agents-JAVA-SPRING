@@ -24,7 +24,7 @@
     <modules>
         <module>common</module>
         <module>mcp-server</module>
-        <module>code-mcp-server</module>
+<!--        <module>code-mcp-server</module>-->
         <module>raw-agent</module>
         <module>langchain4j-agent-local</module>
         <module>langchain4j-agent-mcp</module>
@@ -37,15 +37,24 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>3.5.0</spring-boot.version>
-        <langchain4j.version>1.15.1</langchain4j.version>
-        <spring-ai.version>1.0.3</spring-ai.version>
-        <mcp-sdk.version>0.10.0</mcp-sdk.version>
+        <!-- LangChain4j — latest stable -->
+        <langchain4j.version>1.16.3</langchain4j.version>
+        <!--
+            Spring AI — latest stable 1.x.
+            IMPORTANT: Spring AI BOM manages MCP SDK version internally (0.14.x).
+            Do NOT add a separate mcp-bom — it will override the version and
+            cause ClassNotFoundException for McpJsonMapper / McpServer classes.
+            Spring AI 2.0.0 requires Spring Boot 4 + Jackson 3 — do NOT upgrade yet.
+        -->
+        <spring-ai.version>1.1.4</spring-ai.version>
         <lombok.version>1.18.34</lombok.version>
         <springdoc.version>2.8.9</springdoc.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+
+            <!-- Spring Boot BOM -->
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
@@ -53,6 +62,8 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+
+            <!-- LangChain4j BOM -->
             <dependency>
                 <groupId>dev.langchain4j</groupId>
                 <artifactId>langchain4j-bom</artifactId>
@@ -60,6 +71,12 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+
+            <!--
+                Spring AI BOM — also manages MCP SDK version.
+                Spring AI 1.1.4 uses MCP SDK 0.14.x internally.
+                Do NOT add mcp-bom separately — version conflict!
+            -->
             <dependency>
                 <groupId>org.springframework.ai</groupId>
                 <artifactId>spring-ai-bom</artifactId>
@@ -67,29 +84,29 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-            <dependency>
-                <groupId>io.modelcontextprotocol.sdk</groupId>
-                <artifactId>mcp-bom</artifactId>
-                <version>${mcp-sdk.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
+
+            <!-- Internal modules -->
             <dependency>
                 <groupId>com.xkondix</groupId>
                 <artifactId>common</artifactId>
                 <version>${project.version}</version>
             </dependency>
+
+            <!-- Lombok -->
             <dependency>
                 <groupId>org.projectlombok</groupId>
                 <artifactId>lombok</artifactId>
                 <version>${lombok.version}</version>
                 <scope>provided</scope>
             </dependency>
+
+            <!-- SpringDoc OpenAPI -->
             <dependency>
                 <groupId>org.springdoc</groupId>
                 <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                 <version>${springdoc.version}</version>
             </dependency>
+
         </dependencies>
     </dependencyManagement>
 
@@ -103,6 +120,20 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <!-- ── Observability — shared by ALL modules ──────────────────── -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
     </dependencies>
 

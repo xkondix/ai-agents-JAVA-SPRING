@@ -9,13 +9,39 @@ spring:
       server:
         name: ai-sandbox-mcp-server
         version: 1.0.0
+        # SYNC_HTTP_SSE — HTTP transport for LangChain4j and Spring AI MCP clients
         transport: SYNC_HTTP_SSE
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  # Virtual Threads (Java 21) — each request gets its own virtual thread.
+  # Lets requestApproval() block on future.get() without exhausting the Tomcat
+  # thread pool, so approve/reject REST calls are handled concurrently while a
+  # tool call is waiting for approval.
+  threads:
+    virtual:
+      enabled: true
 
+# ── Observability ─────────────────────────────────────────────────────────
+# Tracing is DISABLED by default to avoid noisy "connection refused :4318"
+# errors when Grafana LGTM is not running.
+# To enable: start LGTM (docker compose up lgtm -d) and set
+#   management.tracing.enabled: true
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
+  tracing:
+    enabled: false
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
+    metrics:
+      export:
+        url: http://localhost:4318/v1/metrics
 
 logging:
   level:

@@ -10,8 +10,16 @@ import java.util.concurrent.*;
 
 /**
  * Human-in-the-loop Approval Flow.
- * Blokuje wykonanie wrazliwej operacji do czasu zatwierdzenia przez czlowieka.
- * Zatwierdzenie przez REST API: POST /approvals/{id}/approve lub /reject
+ * Blocks execution of sensitive operations until approved by a human.
+ * Approval via REST API: POST /approvals/{id}/approve or /reject
+ *
+ * When the agent wants to perform a sensitive operation:
+ *   1. Creates an ApprovalRequest and adds it to the pending queue
+ *   2. Blocks the tool execution (CompletableFuture)
+ *   3. Waits for confirmation via REST API or Chat UI /approvals page
+ *   4. Resumes or cancels based on the human decision
+ *
+ * Timeout: configured via code-mcp.approval-timeout-minutes (default: 10)
  */
 @Slf4j
 @Service
@@ -30,18 +38,24 @@ public class ApprovalService {
                 .description(description).details(details)
                 .createdAt(Instant.now()).status(ApprovalStatus.PENDING)
                 .build();
+
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         pending.put(id, req);
         futures.put(id, future);
+
         log.warn("[APPROVAL REQUIRED] id={} tool={} | {}", id, toolName, description);
-        log.warn("[APPROVAL] POST http://localhost:8086/approvals/{}/approve  to confirm", id);
+        log.warn("[APPROVAL] Approve at: POST http://localhost:8086/approvals/{}/approve", id);
+        log.warn("[APPROVAL] Or visit:   http://localhost:3000/approvals");
+
         try {
             Boolean result = future.get(props.getApprovalTimeoutMinutes(), TimeUnit.MINUTES);
             req.setStatus(result ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED);
+            log.info("[APPROVAL] id={} status={}", id, req.getStatus());
             return Boolean.TRUE.equals(result);
         } catch (TimeoutException e) {
             req.setStatus(ApprovalStatus.TIMEOUT);
-            log.warn("[APPROVAL TIMEOUT] id={}", id);
+            log.warn("[APPROVAL TIMEOUT] id={} after {} minutes",
+                    id, props.getApprovalTimeoutMinutes());
             return false;
         } catch (Exception e) {
             log.error("[APPROVAL ERROR] id={}", id, e);

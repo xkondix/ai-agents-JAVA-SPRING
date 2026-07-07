@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { RefreshCw, Bot } from 'lucide-react'
+import { RefreshCw, Bot, ShieldCheck } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import AgentSelector from './components/AgentSelector.jsx'
 import ChatWindow from './components/ChatWindow.jsx'
 import { useAgentHealth } from './hooks/useAgentHealth.js'
+import { usePendingApprovals } from './hooks/usePendingApprovals.js'
 
 export default function App() {
   const [selectedAgent, setSelectedAgent] = useState(null)
   const { status, refresh } = useAgentHealth()
+  const { count: pendingCount } = usePendingApprovals()
 
   const upCount = Object.values(status).filter(s => s === 'up').length
 
@@ -50,8 +53,28 @@ export default function App() {
           />
         </div>
 
-        {/* footer */}
+        {/* approvals link */}
         <div className="px-4 py-3 border-t border-slate-800">
+          <Link
+            to="/approvals"
+            className="flex items-center justify-between w-full px-3 py-2 rounded-xl
+                       bg-slate-800 hover:bg-slate-700 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <ShieldCheck size={14} className="text-amber-400" />
+              <span className="text-xs font-medium text-slate-300">Approval Flow</span>
+            </div>
+            {pendingCount > 0 && (
+              <span className="text-[10px] font-bold bg-amber-500 text-white
+                               px-1.5 py-0.5 rounded-full animate-pulse">
+                {pendingCount}
+              </span>
+            )}
+          </Link>
+        </div>
+
+        {/* footer */}
+        <div className="px-4 py-2 border-t border-slate-800">
           <p className="text-[10px] text-slate-700 text-center">
             Konrad Kowalczyk · xkondix · 2026
           </p>
@@ -75,10 +98,11 @@ export default function App() {
               and it will appear here automatically.
             </p>
             <div className="mt-6 text-xs text-slate-700 space-y-1">
-              <p>langchain4j-agent → port 8082</p>
-              <p>langchain4j-mcp   → port 8083</p>
-              <p>spring-ai-agent   → port 8084</p>
-              <p>spring-ai-mcp     → port 8085</p>
+              <p>raw-agent               → port 8090</p>
+              <p>langchain4j-agent-local → port 8082</p>
+              <p>langchain4j-agent-mcp   → port 8083</p>
+              <p>spring-ai-agent-local   → port 8084</p>
+              <p>spring-ai-agent-mcp     → port 8085</p>
             </div>
           </div>
         )}

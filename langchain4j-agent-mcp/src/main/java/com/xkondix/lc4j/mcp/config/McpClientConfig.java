@@ -4,22 +4,22 @@ import dev.langchain4j.mcp.client.DefaultMcpClient;
 import dev.langchain4j.mcp.client.McpClient;
 import dev.langchain4j.mcp.client.transport.McpTransport;
 import dev.langchain4j.mcp.client.transport.http.StreamableHttpMcpTransport;
-import dev.langchain4j.mcp.client.transport.stdio.StdioMcpTransport;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import java.util.List;
 
 /**
  * MCP Client configuration for LangChain4j.
  *
- * Three transports:
- *   1. HTTP (Streamable) -> mcp-server      (port 8081) — game stats, KB, weather
- *   2. HTTP (Streamable) -> code-mcp-server (port 8086) — project file access
- *   3. stdio             -> Python MCP agent            — game analysis
+ * Two HTTP transports:
+ *   1. Streamable HTTP -> mcp-server      (port 8081) — game stats, KB, weather
+ *   2. Streamable HTTP -> code-mcp-server (port 8086) — project file access
  *
- * All transports are transparent to the agent loop —
+ * Both transports are transparent to the agent loop —
  * the agent just sees "tools" regardless of where they run.
+ *
+ * Note: stdio transport (Python subprocess) intentionally omitted
+ * to keep the demo focused on Java MCP ecosystem.
  */
 @Slf4j
 @Configuration
@@ -60,25 +60,6 @@ public class McpClientConfig {
         return new DefaultMcpClient.Builder()
                 .transport(transport)
                 .clientName("langchain4j-code-client")
-                .clientVersion("1.0")
-                .build();
-    }
-
-    /**
-     * stdio client — launches Python MCP agent as subprocess.
-     * Tools: analyze_game, generate_strategy
-     */
-    @Bean(name = "pythonMcpClient")
-    public McpClient pythonMcpClient() {
-        McpTransport transport = new StdioMcpTransport.Builder()
-                .command(List.of("python3",
-                        "../python-agents/mcp_game_agent.py"))
-                .logEvents(true)
-                .build();
-
-        return new DefaultMcpClient.Builder()
-                .transport(transport)
-                .clientName("langchain4j-python-client")
                 .clientVersion("1.0")
                 .build();
     }

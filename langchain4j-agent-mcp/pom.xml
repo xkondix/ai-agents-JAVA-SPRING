@@ -16,10 +16,9 @@
     <description>
         Demonstrates MCP client integration in LangChain4j:
 
-        1. HTTP transport  - connects to mcp-server (port 8081)
-        2. HTTP transport  - connects to code-mcp-server (port 8086)
-        3. stdio transport - connects to Python MCP agent (mcp_game_agent.py)
-        4. Orchestrator    - single agent delegating to multiple MCP servers
+        1. HTTP transport - connects to mcp-server      (port 8081)
+        2. HTTP transport - connects to code-mcp-server (port 8086)
+        3. Orchestrator   - single agent delegating to multiple MCP servers
 
         Port: 8083
     </description>
@@ -51,10 +50,7 @@
         </dependency> -->
 
         <!--
-            LangChain4j MCP Client
-            Supports:
-              - StreamableHttpMcpTransport (HTTP)
-              - StdioMcpTransport          (subprocess stdio)
+            LangChain4j MCP Client — Streamable HTTP transport
         -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
