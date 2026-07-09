@@ -14,8 +14,9 @@
     <artifactId>common</artifactId>
     <name>Common - Shared DTOs, contracts and utilities</name>
     <description>
-        Shared module: DTOs, request/response models, tool contracts.
-        Both langchain4j-* and spring-ai-* modules depend on this.
+        Shared module: DTOs, request/response models, tool contracts,
+        and shared observability auto-configuration.
+        All agent and MCP server modules depend on this.
     </description>
 
     <dependencies>
@@ -34,6 +35,36 @@
         <dependency>
             <groupId>jakarta.validation</groupId>
             <artifactId>jakarta.validation-api</artifactId>
+        </dependency>
+
+        <!-- ── Observability auto-configuration ─────────────────────────
+             Marked optional: consumers already bring these transitively
+             (spring-boot-starter-web + actuator + micrometer from parent).
+             The auto-config activates only in servlet web apps.        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-observation</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- Servlet API is "optional" inside spring-web, so it does not come
+             transitively. Needed at compile time because
+             ServerRequestObservationContext#getCarrier() returns
+             HttpServletRequest. Scope provided: at runtime embedded Tomcat
+             (spring-boot-starter-web) supplies it in every consumer.    -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 
