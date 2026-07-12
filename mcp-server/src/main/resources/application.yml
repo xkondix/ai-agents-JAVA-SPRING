@@ -23,17 +23,17 @@ spring:
       enabled: true
 
 # ── Observability ─────────────────────────────────────────────────────────
-# Tracing is DISABLED by default to avoid noisy "connection refused :4318"
-# errors when Grafana LGTM is not running.
-# To enable: start LGTM (docker compose up lgtm -d) and set
-#   management.tracing.enabled: true
+# Tracing ENABLED — without it, MCP tool executions on this server produce
+# no spans at all, so agent traces in Tempo end at the HTTP client call.
+# If Grafana LGTM is down you will see "connection refused :4318" warnings;
+# either start it (docker compose up lgtm -d) or set tracing.enabled: false.
 management:
   endpoints:
     web:
       exposure:
         include: health,info,prometheus,metrics
   tracing:
-    enabled: false
+    enabled: true
     sampling:
       probability: 1.0
   otlp:

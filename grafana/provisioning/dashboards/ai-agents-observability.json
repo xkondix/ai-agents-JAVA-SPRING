@@ -1,0 +1,176 @@
+{
+  "uid": "ai-agents-obs",
+  "title": "AI Agents \u2014 Observability",
+  "tags": ["ai-agents", "genai", "provisioned"],
+  "schemaVersion": 39,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "label": "Prometheus",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "Cost \u2014 tokens", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false },
+    {
+      "type": "timeseries",
+      "title": "Tokens/min by model & type",
+      "description": "Metric names verified against Prometheus on 2026-07-11 (see /api/v1/label/__name__/values). Same numbers as gen_ai.usage.* span attributes, aggregated. framework label (langchain4j) splits LC4j vs Spring AI series once the LC4j listener ships.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job, gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_total[$__rate_interval])) * 60",
+          "legendFormat": "{{job}} {{gen_ai_request_model}} {{gen_ai_token_type}}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Tokens (last 24h)",
+      "description": "Instant query \u2014 one number per token type over the trailing 24h, independent of the dashboard time range.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (gen_ai_token_type) (increase(gen_ai_client_token_usage_total[24h]))",
+          "legendFormat": "{{gen_ai_token_type}}",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    { "type": "row", "title": "Performance \u2014 LLM & tools", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 }, "collapsed": false },
+    {
+      "type": "timeseries",
+      "title": "LLM call duration by model (avg & p95)",
+      "description": "Source: gen_ai_client_operation_milliseconds histogram (values converted to seconds). p95 works out of the box because the OTLP exporter already ships explicit buckets \u2014 no percentiles-histogram config needed.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum by (job, gen_ai_request_model) (rate(gen_ai_client_operation_milliseconds_sum[$__rate_interval])) / sum by (job, gen_ai_request_model) (rate(gen_ai_client_operation_milliseconds_count[$__rate_interval]))) / 1000",
+          "legendFormat": "avg {{job}} {{gen_ai_request_model}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, job, gen_ai_request_model) (rate(gen_ai_client_operation_milliseconds_bucket[$__rate_interval]))) / 1000",
+          "legendFormat": "p95 {{job}} {{gen_ai_request_model}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM calls/min by model",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job, gen_ai_request_model) (rate(gen_ai_client_operation_milliseconds_count[$__rate_interval])) * 60",
+          "legendFormat": "{{job}} {{gen_ai_request_model}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool executions (Spring AI): rate & avg duration",
+      "description": "Source: spring_ai_tool_milliseconds. Series 'avg duration' is expressed in seconds (unit override via byRegexp on the legend name). To split per tool, inspect the label set of this metric in Prometheus (likely spring_ai_tool_definition_name) and add it to the by() clause.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [
+        { "matcher": { "id": "byRegexp", "options": "avg duration.*" }, "properties": [ { "id": "unit", "value": "s" } ] }
+      ] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job) (rate(spring_ai_tool_milliseconds_count[$__rate_interval])) * 60",
+          "legendFormat": "executions/min {{job}}"
+        },
+        {
+          "refId": "B",
+          "expr": "(sum by (job) (rate(spring_ai_tool_milliseconds_sum[$__rate_interval])) / sum by (job) (rate(spring_ai_tool_milliseconds_count[$__rate_interval]))) / 1000",
+          "legendFormat": "avg duration (s) {{job}}"
+        }
+      ]
+    },
+    { "type": "row", "title": "Reliability \u2014 HTTP", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 }, "collapsed": false },
+    {
+      "type": "timeseries",
+      "title": "Requests/min by service & endpoint",
+      "description": "Actuator endpoints are excluded at the source by the shared ObservationPredicate (module: common).",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job, uri) (rate(http_server_requests_milliseconds_count[$__rate_interval])) * 60",
+          "legendFormat": "{{job}} {{uri}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP 4xx/5xx per min",
+      "description": "Empty flat zero = zero errors (the query filters status 4xx/5xx).",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "custom": { "fillOpacity": 10 }, "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job, uri, status) (rate(http_server_requests_milliseconds_count{status=~\"4..|5..\"}[$__rate_interval])) * 60",
+          "legendFormat": "{{job}} {{uri}} {{status}}"
+        }
+      ]
+    },
+    { "type": "row", "title": "JVM", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 }, "collapsed": false },
+    {
+      "type": "timeseries",
+      "title": "Heap used by service",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job) (jvm_memory_used_bytes{area=\"heap\"})",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Live threads by service",
+      "description": "Watch mcp-server during a pending approval \u2014 virtual threads keep this flat while a request blocks.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job) (jvm_threads_live)",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    }
+  ]
+}

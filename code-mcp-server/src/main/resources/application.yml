@@ -42,6 +42,7 @@ code-mcp:
     - .tsx
     - .sql
     - .txt
+    - .imports   # Spring Boot AutoConfiguration.imports (META-INF/spring)
   ignored-dirs:
     - .git
     - target

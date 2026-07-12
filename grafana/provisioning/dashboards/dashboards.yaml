@@ -1,0 +1,18 @@
+# Grafana dashboard provisioning provider.
+# The whole directory is mounted into the LGTM container
+# (see docker-compose.yml -> grafana-lgtm.volumes), so every *.json
+# placed here becomes a dashboard on container startup.
+apiVersion: 1
+
+providers:
+  - name: ai-agents-dashboards
+    orgId: 1
+    folder: AI Agents
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true   # you can still tweak panels in the UI;
+                           # export back to this folder to persist changes
+    options:
+      path: /otel-lgtm/grafana/conf/provisioning/dashboards
+      foldersFromFilesStructure: false

@@ -123,6 +123,7 @@
         </dependency>
 
         <!-- ── Observability — shared by ALL modules ──────────────────── -->
+        <!-- Traces: Micrometer Observations -> OTel spans -> OTLP push -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-tracing-bridge-otel</artifactId>
@@ -131,9 +132,20 @@
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-otlp</artifactId>
         </dependency>
+        <!-- Metrics, pull model: /actuator/prometheus scrape endpoint -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <!-- Metrics, push model: activates management.otlp.metrics.export.*
+             Without this registry the OTLP metrics url in application.yml is
+             silently ignored and the LGTM Prometheus receives NO app metrics
+             (it does not scrape host apps — it only stores what arrives
+             over OTLP). Traces worked without it because the trace exporter
+             is a separate artifact (opentelemetry-exporter-otlp above). -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-otlp</artifactId>
         </dependency>
     </dependencies>
 

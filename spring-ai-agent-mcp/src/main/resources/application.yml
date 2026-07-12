@@ -29,11 +29,19 @@ spring:
     mcp:
       client:
         enabled: true
-        connections:
-          java-mcp-server:
-            url: http://localhost:8081/mcp
-          code-mcp-server:
-            url: http://localhost:8086/mcp
+        type: SYNC
+        # FIX: connections must live under a TRANSPORT key (sse / streamable-http).
+        # The previous `client.connections` prefix does not exist, so Spring Boot
+        # silently ignored it -> ZERO MCP clients -> zero tools for the model.
+        sse:
+          connections:
+            java-mcp-server:
+              url: http://localhost:8081   # base URL only; /sse endpoint is the default
+            # code-mcp-server runs in STDIO mode by default (Claude Desktop).
+            # Enable this ONLY when it runs with transport=SYNC_HTTP_SSE,
+            # otherwise the failed connection breaks application startup:
+            # code-mcp-server:
+            #   url: http://localhost:8086
 
 # ── Observability ─────────────────────────────────────────────────────────
 management:
@@ -54,4 +62,5 @@ management:
 logging:
   level:
     com.xkondix: DEBUG
+    com.xkondix.springai.mcp.config: TRACE   # shows "Injected trace context..." per MCP request
     org.springframework.ai: INFO
