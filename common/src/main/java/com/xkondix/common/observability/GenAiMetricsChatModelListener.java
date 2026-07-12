@@ -22,12 +22,14 @@ import java.util.Map;
  * Grafana dashboard. This listener closes the gap.
  *
  * DESIGN DECISION: metric names and tag keys deliberately mirror the ones
- * Spring AI publishes (gen.ai.client.token.usage /
- * gen.ai.client.operation.duration with gen_ai.request.model and
- * gen_ai.token.type tags), so all four agent modules land on the SAME
- * dashboard panels and become directly comparable. The extra tag
- * framework=langchain4j lets you split the series when you want the
- * comparison view.
+ * Spring AI publishes, so all four agent modules land on the SAME dashboard
+ * panels and become directly comparable:
+ *   gen.ai.client.token.usage   (counter, gen_ai.token.type=input/output/total)
+ *   gen.ai.client.operation     (timer — NOTE: no ".duration" suffix; Spring AI
+ *                                exports gen_ai_client_operation_milliseconds,
+ *                                a mismatched name puts series on nobody's panel)
+ * The extra tag framework=langchain4j lets you split the series when you
+ * want the comparison view.
  *
  * Wiring: the LangChain4j Spring Boot starters attach every
  * ChatModelListener bean from the context to the auto-configured models —
@@ -80,7 +82,7 @@ public class GenAiMetricsChatModelListener implements ChatModelListener {
     private void recordDuration(Map<Object, Object> attributes, String model, String error) {
         Object start = attributes.get(START_NANOS);
         if (start instanceof Long startNanos) {
-            Timer.builder("gen.ai.client.operation.duration")
+            Timer.builder("gen.ai.client.operation")
                     .description("Duration of a single LLM call (LangChain4j)")
                     .tag("gen_ai.operation.name", "chat")
                     .tag("gen_ai.request.model", model)
