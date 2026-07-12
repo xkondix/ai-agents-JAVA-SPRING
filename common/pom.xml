@@ -66,6 +66,22 @@
             <artifactId>jakarta.servlet-api</artifactId>
             <scope>provided</scope>
         </dependency>
+
+        <!-- LangChain4j core — ONLY for the GenAI metrics ChatModelListener.
+             Optional: the listener auto-config activates via
+             @ConditionalOnClass(ChatModelListener) exclusively in modules
+             that already ship LangChain4j; Spring AI and raw modules never
+             see this class. Version managed by langchain4j-bom (parent). -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-core</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <optional>true</optional>
+        </dependency>
     </dependencies>
 
 </project>
