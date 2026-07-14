@@ -24,7 +24,7 @@
     {
       "type": "timeseries",
       "title": "Tokens/min by model & type",
-      "description": "Metric names verified against Prometheus on 2026-07-11 (see /api/v1/label/__name__/values). Same numbers as gen_ai.usage.* span attributes, aggregated. framework label (langchain4j) splits LC4j vs Spring AI series once the LC4j listener ships.",
+      "description": "Metric names verified against Prometheus on 2026-07-11. Same numbers as gen_ai.usage.* span attributes, aggregated. framework label (raw / langchain4j / absent = Spring AI) splits the three instrumentation approaches.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 16, "x": 0, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
@@ -38,8 +38,8 @@
     },
     {
       "type": "stat",
-      "title": "Tokens (last 24h)",
-      "description": "Instant query \u2014 one number per token type over the trailing 24h, independent of the dashboard time range.",
+      "title": "Tokens (dashboard range)",
+      "description": "Sums token usage over the CURRENT dashboard time range ($__range) \u2014 pick 'Last 15 minutes' and the numbers follow.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
@@ -47,7 +47,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (gen_ai_token_type) (increase(gen_ai_client_token_usage_total[24h]))",
+          "expr": "sum by (gen_ai_token_type) (increase(gen_ai_client_token_usage_total[$__range]))",
           "legendFormat": "{{gen_ai_token_type}}",
           "instant": true,
           "range": false
@@ -58,7 +58,7 @@
     {
       "type": "timeseries",
       "title": "LLM call duration by model (avg & p95)",
-      "description": "Source: gen_ai_client_operation_milliseconds histogram (values converted to seconds). p95 works out of the box because the OTLP exporter already ships explicit buckets \u2014 no percentiles-histogram config needed.",
+      "description": "Source: gen_ai_client_operation_milliseconds histogram (values converted to seconds). raw-agent and LC4j emit the same meter name (gen.ai.client.operation) so all frameworks share this panel.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
       "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
@@ -92,7 +92,7 @@
     {
       "type": "timeseries",
       "title": "Tool executions (Spring AI): rate & avg duration",
-      "description": "Source: spring_ai_tool_milliseconds. Series 'avg duration' is expressed in seconds (unit override via byRegexp on the legend name). To split per tool, inspect the label set of this metric in Prometheus (likely spring_ai_tool_definition_name) and add it to the by() clause.",
+      "description": "Source: spring_ai_tool_milliseconds \u2014 emitted only by Spring AI modules. raw-agent has tool_call SPANS (Tempo) but no tool metric; LC4j has gen_ai_client_tool_requests (model-requested tool calls). To split per tool, inspect the label set in Prometheus and add it to by().",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [

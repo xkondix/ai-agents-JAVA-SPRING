@@ -3,36 +3,38 @@ package com.xkondix.lc4j.mcp.config;
 import dev.langchain4j.mcp.client.DefaultMcpClient;
 import dev.langchain4j.mcp.client.McpClient;
 import dev.langchain4j.mcp.client.transport.McpTransport;
-import dev.langchain4j.mcp.client.transport.http.StreamableHttpMcpTransport;
+import dev.langchain4j.mcp.client.transport.http.HttpMcpTransport;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
  * MCP Client configuration for LangChain4j.
  *
- * Two HTTP transports:
- *   1. Streamable HTTP -> mcp-server      (port 8081) — game stats, KB, weather
- *   2. Streamable HTTP -> code-mcp-server (port 8086) — project file access
+ * TRANSPORT MUST MATCH THE SERVER (lesson learned the 404 way):
+ * both our servers run Spring AI MCP in SYNC_HTTP_SSE mode, which exposes
+ * GET /sse + POST /mcp/message. The previous config used
+ * StreamableHttpMcpTransport (single-endpoint protocol, POST /mcp) —
+ * the server answered 404 and client initialization killed the whole
+ * application context at startup (DefaultMcpClient initializes eagerly
+ * inside build()).
  *
- * Both transports are transparent to the agent loop —
- * the agent just sees "tools" regardless of where they run.
- *
- * Note: stdio transport (Python subprocess) intentionally omitted
- * to keep the demo focused on Java MCP ecosystem.
+ * Comparison note for the talk: Spring AI configures the same thing in yml
+ * (spring.ai.mcp.client.sse.connections.*), LangChain4j does it in code.
  */
 @Slf4j
 @Configuration
 public class McpClientConfig {
 
     /**
-     * HTTP client — connects to mcp-server Spring Boot app (port 8081).
-     * Tools: get_game_stats, save_note, search_notes, get_weather
+     * SSE client — connects to mcp-server (port 8081).
+     * Tools: get_game_stats, save_note, search_notes, delete_note, get_weather
      */
     @Bean(name = "javaMcpClient")
     public McpClient javaMcpClient() {
-        McpTransport transport = new StreamableHttpMcpTransport.Builder()
-                .url("http://localhost:8081/mcp")
+        McpTransport transport = new HttpMcpTransport.Builder()
+                .sseUrl("http://localhost:8081/sse")
                 .logRequests(true)
                 .logResponses(true)
                 .build();
@@ -45,14 +47,22 @@ public class McpClientConfig {
     }
 
     /**
-     * HTTP client — connects to code-mcp-server (port 8086).
-     * Tools: read_file, list_files, get_project_structure,
-     *        search_in_files, write_file, create_file, move_file, delete_file
+     * SSE client — connects to code-mcp-server (port 8086).
+     * DISABLED BY DEFAULT: code-mcp-server normally runs in STDIO mode for
+     * Claude Desktop, so port 8086 is dead and eager client initialization
+     * would prevent this application from starting at all.
+     *
+     * Enable only when code-mcp-server runs with transport=SYNC_HTTP_SSE:
+     *   lc4j:
+     *     mcp:
+     *       code-server:
+     *         enabled: true
      */
     @Bean(name = "codeMcpClient")
+    @ConditionalOnProperty(name = "lc4j.mcp.code-server.enabled", havingValue = "true")
     public McpClient codeMcpClient() {
-        McpTransport transport = new StreamableHttpMcpTransport.Builder()
-                .url("http://localhost:8086/mcp")
+        McpTransport transport = new HttpMcpTransport.Builder()
+                .sseUrl("http://localhost:8086/sse")
                 .logRequests(true)
                 .logResponses(true)
                 .build();

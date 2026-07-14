@@ -3,6 +3,8 @@ package com.xkondix.rawagent.agent;
 import com.xkondix.rawagent.model.Message;
 import com.xkondix.rawagent.model.ToolCall;
 import com.xkondix.rawagent.tools.DemoTools;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,18 @@ import java.util.List;
  * Safety: maxIterations prevents infinite loops.
  * Graceful degradation: if LLM is unavailable, returns a readable error
  * instead of propagating a stack trace to the user.
+ *
+ * SPANS BY HAND — the tracing counterpart of the manual metrics in
+ * LlmClient. Spring AI gives you "tool_call xyz" spans for free; here we
+ * create them ourselves with the low-level Tracer API, so a raw-agent
+ * trace in Tempo looks structurally identical to a Spring AI one:
+ *   http post /api/v1/agent/chat
+ *   ├── chat <model>          (created in LlmClient)
+ *   ├── tool_call <name>      (created here)
+ *   └── chat <model>
+ * Tracer.nextSpan() automatically parents the new span to the current
+ * one (the HTTP server span), and withSpan(...) scopes it on this thread
+ * so the LlmClient span nests correctly inside the loop.
  */
 @Slf4j
 @Service
@@ -34,6 +48,7 @@ public class RawAgentLoop {
 
     private final LlmClient llmClient;
     private final DemoTools tools;
+    private final Tracer tracer;
 
     private static final int MAX_ITERATIONS = 10;
 
@@ -93,15 +108,39 @@ public class RawAgentLoop {
             }
 
             for (ToolCall toolCall : message.toolCalls()) {
-                String toolName = toolCall.function().name();
-                String toolArgs = toolCall.function().arguments();
-                log.info("[LOOP] Tool call: {} args={}", toolName, toolArgs);
-                String result = tools.execute(toolName, toolArgs);
-                log.info("[LOOP] Tool result: {}", result);
+                String result = executeToolWithSpan(toolCall, i);
                 history.add(Message.tool(toolCall.id(), result));
             }
         }
 
         return "Max iterations (" + MAX_ITERATIONS + ") reached.";
+    }
+
+    /**
+     * Executes a single tool wrapped in a "tool_call <name>" span —
+     * the manual equivalent of what Spring AI emits automatically.
+     * Tool errors are returned as text into the history (never thrown),
+     * so the span is marked failed only on unexpected exceptions.
+     */
+    private String executeToolWithSpan(ToolCall toolCall, int iteration) {
+        String toolName = toolCall.function().name();
+        String toolArgs = toolCall.function().arguments();
+
+        Span span = tracer.nextSpan().name("tool_call " + toolName);
+        span.tag("gen_ai.tool.name", toolName);
+        span.tag("agent.loop.iteration", String.valueOf(iteration));
+        span.tag("framework", "raw");
+
+        try (Tracer.SpanInScope ignored = tracer.withSpan(span.start())) {
+            log.info("[LOOP] Tool call: {} args={}", toolName, toolArgs);
+            String result = tools.execute(toolName, toolArgs);
+            log.info("[LOOP] Tool result: {}", result);
+            return result;
+        } catch (RuntimeException e) {
+            span.error(e);
+            throw e;
+        } finally {
+            span.end();
+        }
     }
 }

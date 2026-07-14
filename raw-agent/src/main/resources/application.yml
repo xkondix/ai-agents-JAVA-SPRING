@@ -10,7 +10,7 @@ raw-agent:
   provider: ollama
   ollama:
     base-url: http://localhost:11434
-    model: gemma3:4b
+    model: llama3.1:8b
     temperature: 0.3
     timeout-seconds: 120
 

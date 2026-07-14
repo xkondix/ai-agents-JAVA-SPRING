@@ -4,6 +4,7 @@ import com.xkondix.rawagent.model.ChatResponse;
 import com.xkondix.rawagent.model.Message;
 import com.xkondix.rawagent.model.ToolCall;
 import com.xkondix.rawagent.tools.DemoTools;
+import io.micrometer.tracing.Tracer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -17,7 +18,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,6 +29,10 @@ import static org.mockito.Mockito.when;
  * because the loop is plain Java, it is fully testable with a mocked
  * LlmClient. Frameworks hide the loop, which also makes it harder to
  * test at this level of precision.
+ *
+ * Tracing note: the loop creates manual "tool_call" spans, so it needs a
+ * Tracer. Tests use Tracer.NOOP — spans become no-ops, behavior stays
+ * identical, nothing to mock.
  */
 @ExtendWith(MockitoExtension.class)
 class RawAgentLoopTest {
@@ -45,7 +49,7 @@ class RawAgentLoopTest {
     // ── Helpers ───────────────────────────────────────────────────────────
 
     private RawAgentLoop loop() {
-        return new RawAgentLoop(llmClient, tools);
+        return new RawAgentLoop(llmClient, tools, Tracer.NOOP);
     }
 
     private static ChatResponse textResponse(String content) {

@@ -67,7 +67,7 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- LangChain4j core — ONLY for the GenAI metrics ChatModelListener.
+        <!-- LangChain4j core — ONLY for the GenAI observability listener.
              Optional: the listener auto-config activates via
              @ConditionalOnClass(ChatModelListener) exclusively in modules
              that already ship LangChain4j; Spring AI and raw modules never
@@ -80,6 +80,14 @@
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- Tracing API — the listener also creates "chat <model>" spans
+             (LC4j has no built-in tracing). Every consumer has the impl via
+             micrometer-tracing-bridge-otel from the parent pom.          -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing</artifactId>
             <optional>true</optional>
         </dependency>
     </dependencies>
