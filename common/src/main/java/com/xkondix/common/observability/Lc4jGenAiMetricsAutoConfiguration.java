@@ -2,15 +2,17 @@ package com.xkondix.common.observability;
 
 import dev.langchain4j.model.chat.listener.ChatModelListener;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.tracing.Tracer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 
 /**
- * Registers the GenAI metrics listener ONLY where it makes sense:
+ * Registers the GenAI metrics/tracing listener ONLY where it makes sense:
  *   - @ConditionalOnClass(ChatModelListener) — module has LangChain4j on the
  *     classpath (langchain4j-core is an OPTIONAL dependency of common, so
  *     Spring AI and raw modules never load this configuration),
@@ -18,7 +20,7 @@ import org.springframework.context.annotation.Bean;
  *
  * ORDERING PITFALL (this bit us): @ConditionalOnBean inside an
  * auto-configuration is evaluated in auto-configuration order. Without
- * ordering this class could be evaluated BEFORE actuator registers the
+ * ordering, this class could be evaluated BEFORE actuator registers the
  * MeterRegistry — the condition silently fails and the listener never
  * exists, with zero errors in the log.
  *
@@ -27,13 +29,8 @@ import org.springframework.context.annotation.Bean;
  * from each consumer's spring-boot-starter-actuator), and ordering by name
  * needs no compile-time dependency.
  *
- * The LangChain4j Spring Boot starters collect all ChatModelListener beans
- * and attach them to the auto-configured ChatModel — the listener starts
- * working without touching any model definition.
- *
- * Spring AI modules do NOT need an equivalent: ChatClient emits
- * gen_ai.client.* metrics out of the box via its own observation
- * conventions. This class exists precisely to level the playing field.
+ * Tracer is injected as ObjectProvider — with tracing disabled the
+ * listener runs in metrics-only mode instead of failing to wire.
  */
 @AutoConfiguration(afterName =
         "org.springframework.boot.actuate.autoconfigure.metrics.CompositeMeterRegistryAutoConfiguration")
@@ -45,9 +42,12 @@ public class Lc4jGenAiMetricsAutoConfiguration {
 
     @Bean
     @ConditionalOnBean(MeterRegistry.class)
-    ChatModelListener genAiMetricsChatModelListener(MeterRegistry registry) {
-        log.info("[OBSERVABILITY] LangChain4j GenAI metrics listener registered "
-                + "(gen.ai.client.* metrics, framework=langchain4j)");
-        return new GenAiMetricsChatModelListener(registry);
+    ChatModelListener genAiMetricsChatModelListener(MeterRegistry registry,
+                                                    ObjectProvider<Tracer> tracerProvider) {
+        Tracer tracer = tracerProvider.getIfAvailable();
+        log.info("[OBSERVABILITY] LangChain4j GenAI listener registered "
+                + "(metrics: gen.ai.client.*, spans: {}, framework=langchain4j)",
+                tracer != null ? "chat <model>" : "DISABLED (no Tracer bean)");
+        return new GenAiMetricsChatModelListener(registry, tracer);
     }
 }
