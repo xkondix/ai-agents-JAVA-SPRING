@@ -1,5 +1,6 @@
 package com.xkondix.lc4j.mcp.service;
 
+import com.xkondix.lc4j.mcp.config.TracingToolProvider;
 import dev.langchain4j.mcp.client.McpClient;
 import dev.langchain4j.mcp.McpToolProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
@@ -7,7 +8,10 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
+import dev.langchain4j.service.tool.ToolProvider;
+import io.micrometer.tracing.Tracer;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +29,11 @@ import java.util.Optional;
  *
  * It just sees a flat list of tools and picks the right one.
  * This is the core MCP orchestrator demo for Presentation 2.
+ *
+ * Observability: McpToolProvider is wrapped in TracingToolProvider, so every
+ * tool execution shows up as a "tool_call <name>" span in Tempo — the LC4j
+ * trace now has the same shape as Spring AI and raw-agent traces
+ * (http post → chat → tool_call → chat).
  */
 @Slf4j
 @Service
@@ -52,7 +61,8 @@ public class OrchestratorService {
     public OrchestratorService(
             ChatModel model,
             @Qualifier("javaMcpClient") McpClient javaMcpClient,
-            @Qualifier("codeMcpClient") Optional<McpClient> codeMcpClient) {
+            @Qualifier("codeMcpClient") Optional<McpClient> codeMcpClient,
+            ObjectProvider<Tracer> tracerProvider) {
 
         List<McpClient> clients = new ArrayList<>();
         clients.add(javaMcpClient);
@@ -64,9 +74,9 @@ public class OrchestratorService {
                 () -> log.info("code-mcp-server client disabled "
                         + "(lc4j.mcp.code-server.enabled=false) — file tools unavailable"));
 
-        McpToolProvider toolProvider = McpToolProvider.builder()
-                .mcpClients(clients)
-                .build();
+        ToolProvider toolProvider = new TracingToolProvider(
+                McpToolProvider.builder().mcpClients(clients).build(),
+                tracerProvider.getIfAvailable());
 
         this.assistant = AiServices.builder(OrchestratorAssistant.class)
                 .chatModel(model)

@@ -13,7 +13,10 @@ langchain4j:
   ollama:
     chat-model:
       base-url: http://localhost:11434
-      model-name: gemma3:4b
+      # llama3.1 (not gemma3): local tools require function calling,
+      # which gemma3 does not support — the model would only narrate
+      # tool usage in plain text instead of returning tool_calls.
+      model-name: llama3.1:8b
       temperature: 0.3
       timeout: 120s
       log-requests: true
