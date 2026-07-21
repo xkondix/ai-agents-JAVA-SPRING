@@ -11,20 +11,18 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>langchain4j-agent-mcp</artifactId>
-    <name>LangChain4j Agent MCP - Orchestrator with external MCP servers</name>
+    <artifactId>patterns-langchain4j</artifactId>
+    <name>Patterns LangChain4j - Agentic workflow patterns via DSL</name>
     <description>
-        Demonstrates MCP client integration in LangChain4j:
-
-        1. HTTP transport - connects to mcp-server      (port 8081)
-        2. HTTP transport - connects to code-mcp-server (port 8086)
-        3. Orchestrator   - single agent delegating to multiple MCP servers
-
-        Port: 8083
+        The five workflow patterns (Anthropic "Building Effective Agents")
+        implemented in LangChain4j. KEY POINT: LC4j ships a dedicated
+        Agentic DSL (sequenceBuilder / loopBuilder / conditionalBuilder)
+        — compare with the hand-rolled Java in patterns-spring-ai.
+        One class per pattern. AC Milan domain tools.
+        Port: 8087
     </description>
 
     <dependencies>
-
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -42,22 +40,17 @@
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-ollama-spring-boot-starter</artifactId>
         </dependency>
-
-        <!-- OpenAI-compatible starter — used by the "openrouter" Spring
-             profile (langchain4j.open-ai.* properties). Property-driven:
-             with the "local" profile no open-ai properties exist, so no
-             OpenAI model bean is created and no API key is required. -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
         </dependency>
 
-        <!--
-            LangChain4j MCP Client — Streamable HTTP transport
-        -->
+        <!-- Agentic DSL: sequenceBuilder / loopBuilder / conditionalBuilder.
+             Version managed by langchain4j-bom (beta artifact, same as
+             langchain4j-mcp which resolves to 1.16.3-beta26). -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-mcp</artifactId>
+            <artifactId>langchain4j-agentic</artifactId>
         </dependency>
 
         <dependency>
@@ -72,7 +65,6 @@
             <groupId>com.xkondix</groupId>
             <artifactId>common</artifactId>
         </dependency>
-
     </dependencies>
 
     <build>

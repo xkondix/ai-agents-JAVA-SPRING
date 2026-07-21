@@ -48,11 +48,14 @@
             <artifactId>langchain4j-ollama-spring-boot-starter</artifactId>
         </dependency>
 
-        <!-- OpenAI / OpenRouter (commented out until API key is configured) -->
-        <!-- <dependency>
+        <!-- OpenAI-compatible starter — used by the "openrouter" Spring
+             profile (langchain4j.open-ai.* properties). Property-driven:
+             with the "local" profile no open-ai properties exist, so no
+             OpenAI model bean is created and no API key is required. -->
+        <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
-        </dependency> -->
+        </dependency>
 
         <!--
             Redis chat memory — moved to langchain4j-community in LangChain4j 1.x

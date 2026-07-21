@@ -1,16 +1,12 @@
 # ── Base (profile-independent) ────────────────────────────────────────────
 server:
-  port: 8082
+  port: 8087
 
 spring:
   application:
-    name: langchain4j-agent-local
+    name: patterns-langchain4j
   profiles:
     default: openrouter   # switch back to Ollama with --spring.profiles.active=local
-  data:
-    redis:
-      host: localhost
-      port: 6379
 
 # ── Observability ─────────────────────────────────────────────────────────
 management:
@@ -34,9 +30,6 @@ logging:
     dev.langchain4j: INFO
 
 ---
-# ── Profile: local — Ollama on this machine ───────────────────────────────
-# LC4j starters are property-driven: only the model whose properties exist
-# in the active profile gets auto-configured, so ollama/open-ai never clash.
 spring:
   config:
     activate:
@@ -46,8 +39,6 @@ langchain4j:
   ollama:
     chat-model:
       base-url: http://localhost:11434
-      # llama3.1 (not gemma3): local tools require function calling,
-      # which gemma3 does not support.
       model-name: llama3.1:8b
       temperature: 0.3
       timeout: 120s
@@ -55,7 +46,6 @@ langchain4j:
       log-responses: true
 
 ---
-# ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
 # API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
 # LangChain4j needs the /v1 suffix in base-url (unlike Spring AI).
 spring:
@@ -68,7 +58,7 @@ langchain4j:
     chat-model:
       base-url: https://openrouter.ai/api/v1
       api-key: ${OPENROUTER_API_KEY}
-      model-name: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
+      model-name: openai/gpt-4o-mini
       temperature: 0.3
-      log-requests: true    # LC4j masks the Authorization header in logs
+      log-requests: true
       log-responses: true

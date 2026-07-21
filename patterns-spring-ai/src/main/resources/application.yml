@@ -1,20 +1,24 @@
 # ── Base (profile-independent) ────────────────────────────────────────────
 server:
-  port: 8083
+  port: 8088
 
 spring:
   application:
-    name: langchain4j-agent-mcp
+    name: patterns-spring-ai
   profiles:
     default: openrouter   # switch back to Ollama with --spring.profiles.active=local
-
-# code-mcp-server connection (port 8086) — enable ONLY when that server runs
-# with transport=SYNC_HTTP_SSE; with STDIO the eager client init would kill
-# application startup.
-lc4j:
-  mcp:
-    code-server:
-      enabled: false
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+  ai:
+    chat:
+      observations:
+        include-prompt: true
+        include-completion: true
 
 # ── Observability ─────────────────────────────────────────────────────────
 management:
@@ -35,40 +39,36 @@ management:
 logging:
   level:
     com.xkondix: DEBUG
-    dev.langchain4j: INFO
+    org.springframework.ai: INFO
 
 ---
-# ── Profile: local — Ollama on this machine ───────────────────────────────
 spring:
   config:
     activate:
       on-profile: local
-
-langchain4j:
-  ollama:
-    chat-model:
+  ai:
+    model:
+      chat: ollama
+    ollama:
       base-url: http://localhost:11434
-      model-name: llama3.1:8b
-      temperature: 0.3
-      timeout: 120s
-      log-requests: true
-      log-responses: true
+      chat:
+        options:
+          model: llama3.1:8b
+          temperature: 0.3
 
 ---
-# ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
 # API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
-# LangChain4j needs the /v1 suffix in base-url (unlike Spring AI).
 spring:
   config:
     activate:
       on-profile: openrouter
-
-langchain4j:
-  open-ai:
-    chat-model:
-      base-url: https://openrouter.ai/api/v1
+  ai:
+    model:
+      chat: openai
+    openai:
+      base-url: https://openrouter.ai/api
       api-key: ${OPENROUTER_API_KEY}
-      model-name: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
-      temperature: 0.3
-      log-requests: true    # LC4j masks the Authorization header in logs
-      log-responses: true
+      chat:
+        options:
+          model: openai/gpt-4o-mini
+          temperature: 0.3

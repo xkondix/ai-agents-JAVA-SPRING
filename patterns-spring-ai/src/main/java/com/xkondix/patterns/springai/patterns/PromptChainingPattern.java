@@ -1,0 +1,77 @@
+package com.xkondix.patterns.springai.patterns;
+
+import com.xkondix.common.milan.MilanKnowledgeBase;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
+
+/**
+ * PATTERN 1 — Prompt chaining (sequence).
+ *
+ * Output of step N is the input of step N+1; the decomposition is designed
+ * by the developer, not the model. Each link can have its own prompt,
+ * model and validation gate.
+ *
+ * Spring AI implementation: plain Java — three ChatClient calls in a row.
+ * (LangChain4j equivalent: AgenticServices.sequenceBuilder().)
+ *
+ * Trace signature in Tempo: staircase — sequential "chat" spans,
+ * each starting when the previous one ends.
+ *
+ * Demo: season year -> scout analysis (EN) -> 3 key takeaways ->
+ * translation into the language chosen in the UI (default: English).
+ */
+@Slf4j
+@Service
+public class PromptChainingPattern {
+
+    private final ChatClient plainAgent;
+
+    public PromptChainingPattern(@Qualifier("plainAgent") ChatClient plainAgent) {
+        this.plainAgent = plainAgent;
+    }
+
+    public String run(int seasonYear, String targetLanguage) {
+        String language = normalize(targetLanguage);
+        log.info("[CHAIN] season={} language={}", seasonYear, language);
+        var squad = MilanKnowledgeBase.squad(seasonYear);
+        if (squad.isEmpty()) {
+            return "No data for season " + seasonYear
+                    + ". Available: " + MilanKnowledgeBase.availableSeasons();
+        }
+
+        // Step 1 — scout analysis from raw data (data injected by CODE,
+        // not fetched by the model: the chain is choreographed by us)
+        String analysis = plainAgent.prompt()
+                .user("Write a short scout analysis of this AC Milan squad ("
+                        + seasonYear + "): " + squad)
+                .call()
+                .content();
+        log.info("[CHAIN] step 1 done ({} chars)", analysis.length());
+
+        // Step 2 — condense; a validation gate could sit between links
+        String takeaways = plainAgent.prompt()
+                .user("Condense this analysis into exactly 3 bullet takeaways:\n" + analysis)
+                .call()
+                .content();
+        log.info("[CHAIN] step 2 done");
+
+        // Step 3 — translate into the requested language.
+        // English still goes through the model (polish/format step) so the
+        // chain always has three links and the trace stays comparable.
+        String translated = plainAgent.prompt()
+                .user("Translate the following into " + language
+                        + " (if it is already in " + language
+                        + ", just polish the wording). Keep the bullet format:\n" + takeaways)
+                .call()
+                .content();
+        log.info("[CHAIN] step 3 done");
+
+        return translated;
+    }
+
+    private String normalize(String lang) {
+        return lang == null || lang.isBlank() ? "English" : lang.trim();
+    }
+}

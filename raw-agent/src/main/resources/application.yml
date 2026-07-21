@@ -1,27 +1,14 @@
+# ── Base (profile-independent) ────────────────────────────────────────────
 server:
   port: 8090
 
 spring:
   application:
     name: raw-agent
-
-# ── Ollama (local model) ──────────────────────────────────────────────────
-raw-agent:
-  provider: ollama
-  ollama:
-    base-url: http://localhost:11434
-    model: llama3.1:8b
-    temperature: 0.3
-    timeout-seconds: 120
-
-# ── OpenAI / OpenRouter (uncomment and set API key to use) ────────────────
-#  provider: openai
-#  openai:
-#    base-url: https://openrouter.ai/api/v1
-#    api-key: ${OPENAI_API_KEY}
-#    model: anthropic/claude-sonnet-4-5
-#    temperature: 0.3
-#    timeout-seconds: 60
+  profiles:
+    # Runs with the "openrouter" profile unless another is explicitly activated:
+    #   --spring.profiles.active=local   (Ollama on this machine)
+    default: openrouter
 
 # ── Observability ─────────────────────────────────────────────────────────
 management:
@@ -42,3 +29,37 @@ management:
 logging:
   level:
     com.xkondix: DEBUG
+
+---
+# ── Profile: local — Ollama on this machine ───────────────────────────────
+spring:
+  config:
+    activate:
+      on-profile: local
+
+raw-agent:
+  provider: ollama
+  ollama:
+    base-url: http://localhost:11434
+    model: llama3.1:8b
+    temperature: 0.3
+    timeout-seconds: 120
+
+---
+# ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
+# API key comes ONLY from the OS environment variable OPENROUTER_API_KEY —
+# never put the literal key in this file (public repo!).
+# raw-agent appends /chat/completions itself, so base-url must include /v1.
+spring:
+  config:
+    activate:
+      on-profile: openrouter
+
+raw-agent:
+  provider: openai
+  openai:
+    base-url: https://openrouter.ai/api/v1
+    api-key: ${OPENROUTER_API_KEY}
+    model: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
+    temperature: 0.3
+    timeout-seconds: 60
