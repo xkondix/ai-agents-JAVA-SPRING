@@ -19,6 +19,12 @@ import org.springframework.stereotype.Service;
  * shared state — we use the switch here because it makes the dispatch
  * visible for the demo; swapping to conditionalBuilder is a 1:1 exercise.
  *
+ * LESSON LEARNED — a specialist prompt must COMMAND, not suggest:
+ * "Use getSecretRumors" made the model answer "Yes, I can check that for
+ * you — would you like me to?" instead of calling the tool, so the approval
+ * gate never fired. Models treat capability questions ("do you know…?") as
+ * conversation openers; the prompt has to forbid that explicitly.
+ *
  * Trace signature: one SHORT "chat" (router) + one LONG "chat" (specialist).
  */
 @Slf4j
@@ -35,19 +41,33 @@ public class RoutingPattern {
     }
 
     interface SquadSpecialist {
-        @SystemMessage("You are a squad specialist. Use getSquad/getPlayerStats. "
-                + "Never invent data.")
+        @SystemMessage("You are a squad specialist. ALWAYS call getSquad "
+                + "(and getPlayerStats when a player is mentioned) BEFORE answering. "
+                + "Never invent data and never ask the user for permission to look "
+                + "something up — just look it up and answer.")
         String answer(@UserMessage String question);
     }
 
     interface TransferSpecialist {
-        @SystemMessage("You are a transfer-market specialist. Use getTransfers.")
+        @SystemMessage("You are a transfer-market specialist. ALWAYS call "
+                + "getTransfers BEFORE answering. Never ask whether you should "
+                + "check — check first, then answer with the data.")
         String answer(@UserMessage String question);
     }
 
     interface RumorSpecialist {
-        @SystemMessage("You are an insider. Use getSecretRumors and clearly "
-                + "mark everything as unconfirmed rumor.")
+        @SystemMessage("""
+                You are an insider on AC Milan transfer rumors.
+                ALWAYS call getSecretRumors FIRST — on every question about
+                rumors, gossip or speculation, including yes/no questions such
+                as "do you know any rumors?".
+                NEVER answer with an offer like "would you like me to check?"
+                and never ask for permission: the tool itself is gated by a
+                human approval step, so calling it IS the way to ask.
+                If the tool returns ACCESS DENIED, tell the user the
+                information cannot be shared. Otherwise present the rumors and
+                clearly mark them as unconfirmed.
+                """)
         String answer(@UserMessage String question);
     }
 

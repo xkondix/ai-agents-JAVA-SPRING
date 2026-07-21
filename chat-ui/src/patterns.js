@@ -22,7 +22,13 @@ export const FRAMEWORKS = [
     textClass: 'text-emerald-400', borderClass: 'border-emerald-500' },
 ]
 
-/** Values are sent to the API verbatim — English names the model understands. */
+/**
+ * Values are sent to the API verbatim — keep in sync with
+ * common/src/main/java/com/xkondix/common/lang/TranslationLanguages.java
+ *
+ * 'Mixed' is not a language: the backend turns it into an instruction to
+ * blend ALL supported languages in one text (a word or two from each).
+ */
 export const LANGUAGES = [
   'English',   // default
   'Polish',
@@ -31,7 +37,13 @@ export const LANGUAGES = [
   'Dutch',
   'Greek',
   'Turkish',
+  'Mixed',     // all of the above blended together
 ]
+
+/** Nicer label for the dropdown; value stays exactly as the API expects. */
+export const LANGUAGE_LABELS = {
+  Mixed: 'Mixed (all languages)',
+}
 
 export const PATTERNS = [
   {
@@ -48,12 +60,15 @@ export const PATTERNS = [
   {
     id:          'routing',
     name:        '2. Routing',
-    description: 'A cheap classifier picks the specialist: squad / transfers / rumors 🔒.',
-    traceHint:   'Tempo: one SHORT chat (router) + one LONG chat (specialist).',
+    description: 'A cheap classifier picks the specialist: squad / transfers / rumors 🔒. The rumors branch calls a tool gated by human approval.',
+    traceHint:   'Tempo: one SHORT chat (router) + one LONG chat (specialist). Ask for rumors and the tool span waits for you in /approvals.',
     method:      'POST',
     path:        '/api/v1/patterns/routing',
+    // Imperative phrasing on purpose: "do you know any rumors?" is a
+    // CAPABILITY question and models answer it with an offer instead of
+    // calling the tool.
     input:       'text',
-    defaultValue: 'Who played in midfield in 2007?',
+    defaultValue: 'Show me the latest AC Milan transfer rumors.',
   },
   {
     id:          'parallel',

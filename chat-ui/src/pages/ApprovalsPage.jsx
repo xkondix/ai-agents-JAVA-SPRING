@@ -3,16 +3,18 @@ import { Link } from 'react-router-dom'
 import {
   ShieldCheck, ArrowLeft, RefreshCw, Clock,
   CheckCircle, XCircle, FileText, AlertTriangle,
-  Trash2, FilePlus, FolderInput, StickyNote
+  Trash2, FilePlus, FolderInput, StickyNote, EyeOff
 } from 'lucide-react'
 import { usePendingApprovals } from '../hooks/usePendingApprovals.js'
-import { approveOperation, rejectOperation } from '../api/approvalsApi.js'
+import { approveOperation, rejectOperation, APPROVAL_SOURCES } from '../api/approvalsApi.js'
 
 // ── Tool type config ───────────────────────────────────────────────────────
 const TOOL_CONFIG = {
   // mcp-server knowledge base operations
   SAVE_NOTE:   { label: 'Save Note',     icon: StickyNote,  color: 'text-amber-400',  bg: 'bg-amber-500/10',  border: 'border-amber-500/30'  },
   DELETE_NOTE: { label: 'Delete Note',   icon: Trash2,      color: 'text-red-400',    bg: 'bg-red-500/10',    border: 'border-red-500/30'    },
+  // patterns modules — confidential data disclosure
+  SECRET_RUMORS: { label: 'Disclose Secret Rumors', icon: EyeOff, color: 'text-fuchsia-400', bg: 'bg-fuchsia-500/10', border: 'border-fuchsia-500/30' },
   // code-mcp-server file operations (reference)
   WRITE_FILE:  { label: 'Write File',    icon: FileText,    color: 'text-amber-400',  bg: 'bg-amber-500/10',  border: 'border-amber-500/30'  },
   CREATE_FILE: { label: 'Create File',   icon: FilePlus,    color: 'text-blue-400',   bg: 'bg-blue-500/10',   border: 'border-blue-500/30'   },
@@ -75,11 +77,17 @@ function ApprovalCard({ approval, onApprove, onReject, busy }) {
             <Icon size={16} className={cfg.color} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <p className={`text-sm font-semibold ${cfg.color}`}>{cfg.label}</p>
               {isDelete && (
                 <span className="text-[10px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded">
                   IRREVERSIBLE
+                </span>
+              )}
+              {approval.sourceLabel && (
+                <span className="text-[10px] font-mono text-slate-400 bg-slate-800
+                                 px-1.5 py-0.5 rounded border border-slate-700">
+                  {approval.sourceLabel}
                 </span>
               )}
             </div>
@@ -116,7 +124,7 @@ function ApprovalCard({ approval, onApprove, onReject, busy }) {
       <div className="flex gap-3 px-5 pb-5">
         <button
           disabled={busy}
-          onClick={() => onReject(approval.id)}
+          onClick={() => onReject(approval)}
           className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4
                      rounded-xl border border-slate-600 text-slate-400
                      hover:border-red-500/50 hover:text-red-400 hover:bg-red-500/5
@@ -127,7 +135,7 @@ function ApprovalCard({ approval, onApprove, onReject, busy }) {
         </button>
         <button
           disabled={busy}
-          onClick={() => onApprove(approval.id)}
+          onClick={() => onApprove(approval)}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-6
                      rounded-xl text-white font-medium text-sm transition-all
                      disabled:opacity-40
@@ -153,7 +161,9 @@ function HistoryCard({ item }) {
       <Icon size={14} className={toolCfg.color} />
       <div className="flex-1 min-w-0">
         <p className="text-xs text-slate-300 truncate">{item.description}</p>
-        <p className="text-[10px] text-slate-600 font-mono">#{item.id}</p>
+        <p className="text-[10px] text-slate-600 font-mono">
+          #{item.id}{item.sourceLabel ? ` · ${item.sourceLabel}` : ''}
+        </p>
       </div>
       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusCfg.color} ${statusCfg.bg}`}>
         {statusCfg.label}
@@ -174,12 +184,11 @@ export default function ApprovalsPage() {
     setTimeout(() => setNote(null), 3000)
   }
 
-  const handleApprove = async (id) => {
+  const handleApprove = async (approval) => {
     setBusy(true)
     try {
-      await approveOperation(id)
-      const item = approvals.find(a => a.id === id)
-      if (item) setHistory(h => [{ ...item, status: 'APPROVED' }, ...h].slice(0, 20))
+      await approveOperation(approval.id, approval.source)
+      setHistory(h => [{ ...approval, status: 'APPROVED' }, ...h].slice(0, 20))
       notify('Operation approved successfully')
       await refresh()
     } catch (e) {
@@ -189,12 +198,11 @@ export default function ApprovalsPage() {
     }
   }
 
-  const handleReject = async (id) => {
+  const handleReject = async (approval) => {
     setBusy(true)
     try {
-      await rejectOperation(id)
-      const item = approvals.find(a => a.id === id)
-      if (item) setHistory(h => [{ ...item, status: 'REJECTED' }, ...h].slice(0, 20))
+      await rejectOperation(approval.id, approval.source)
+      setHistory(h => [{ ...approval, status: 'REJECTED' }, ...h].slice(0, 20))
       notify('Operation rejected')
       await refresh()
     } catch (e) {
@@ -268,7 +276,7 @@ export default function ApprovalsPage() {
             <div className="space-y-4">
               {approvals.map(approval => (
                 <ApprovalCard
-                  key={approval.id}
+                  key={`${approval.source}-${approval.id}`}
                   approval={approval}
                   onApprove={handleApprove}
                   onReject={handleReject}
@@ -300,14 +308,17 @@ export default function ApprovalsPage() {
             <div className="space-y-1">
               <p className="text-xs font-semibold text-slate-300">Human-in-the-loop</p>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Sensitive operations (save, delete) require your approval
-                before the agent can execute them. The agent is paused and waiting.
-                Approvals have a 10 minute timeout — after that the operation is automatically cancelled.
-                Timer turns amber at 8 minutes, red at 9 minutes.
+                Sensitive operations (save, delete, disclosing confidential data)
+                require your approval before the agent can proceed. The agent is
+                paused and waiting — you can watch the tool span grow in Grafana Tempo.
+                Approvals time out after 10 minutes; the timer turns amber at 8, red at 9.
               </p>
-              <p className="text-xs text-slate-600 mt-2">
-                Connected to: <span className="font-mono text-slate-500">http://localhost:8081/approvals</span>
-              </p>
+              <div className="text-xs text-slate-600 mt-2 space-y-0.5">
+                <p>Sources polled:</p>
+                {APPROVAL_SOURCES.map(s => (
+                  <p key={s.id} className="font-mono text-slate-500">· {s.label}</p>
+                ))}
+              </div>
             </div>
           </div>
         </section>

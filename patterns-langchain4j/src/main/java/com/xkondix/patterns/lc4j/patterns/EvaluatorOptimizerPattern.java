@@ -22,20 +22,25 @@ import org.springframework.stereotype.Service;
  * Structure mirrors the Devoxx "Loop Workflow" example:
  *   sequence( proposer, loop(scorer, fixer) ) -> outputKey "solution"
  *
+ * NOTE: the agent interfaces are PUBLIC on purpose — the agentic runtime
+ * invokes them reflectively from another package (AgentInvoker.invoke ->
+ * Method.invoke) without setAccessible(), so package-private interfaces
+ * blow up with IllegalAccessException before any LLM call happens.
+ *
  * Trace signature: N repetitions of the chat+chat pair.
  */
 @Slf4j
 @Service
 public class EvaluatorOptimizerPattern {
 
-    interface LineupProposer {
+    public interface LineupProposer {
         @Agent("Proposes a starting XI for a squad")
         @UserMessage("Propose a starting XI formation and lineup for AC Milan "
                 + "based on: {{squadData}}")
         String propose(@V("squadData") String squadData);
     }
 
-    interface LineupScorer {
+    public interface LineupScorer {
         @Agent("Scores a lineup proposal from 0.0 to 1.0")
         @UserMessage("Score this lineup from 0.0 to 1.0 (uses only listed players, "
                 + "covers GK/DEF/MID/ATT, coherent formation). Return ONLY the number.\n"
@@ -43,7 +48,7 @@ public class EvaluatorOptimizerPattern {
         double score(@V("squadData") String squadData, @V("solution") String solution);
     }
 
-    interface LineupFixer {
+    public interface LineupFixer {
         @Agent("Improves a lineup proposal")
         @UserMessage("Improve this lineup so it uses only listed players and covers "
                 + "all lines. Squad: {{squadData}}\nCurrent lineup: {{solution}}")
@@ -51,7 +56,7 @@ public class EvaluatorOptimizerPattern {
     }
 
     /** Typed entry point: proposer once, then the review loop. */
-    interface LineupWorkflow {
+    public interface LineupWorkflow {
         @Agent("Produces an accepted starting XI")
         String create(@V("squadData") String squadData);
     }

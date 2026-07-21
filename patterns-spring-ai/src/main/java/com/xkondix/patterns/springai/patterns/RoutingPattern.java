@@ -14,11 +14,17 @@ import org.springframework.stereotype.Service;
  * Spring AI implementation highlight: structured output — the classifier
  * returns a typed result via .entity(...), then a plain switch.
  *
- * LESSON LEARNED: converting to a BARE ENUM (.entity(Route.class)) is
+ * LESSON LEARNED #1: converting to a BARE ENUM (.entity(Route.class)) is
  * fragile — models return the value quoted, wrapped in JSON or with
  * punctuation, and the converter throws. Wrapping the enum in a record
  * gives the converter a proper object schema and works reliably; a string
  * fallback keeps the router alive even if conversion still hiccups.
+ *
+ * LESSON LEARNED #2: a specialist prompt must COMMAND, not suggest.
+ * "Use getSecretRumors" made the model reply "Yes, I can check that — would
+ * you like me to?" instead of calling the tool, so the human approval gate
+ * never fired. Capability questions ("do you know…?") invite conversation;
+ * the prompt has to forbid that explicitly.
  *
  * Trace signature: one SHORT "chat" (router) + one LONG "chat" (specialist)
  * — the time asymmetry is the fingerprint of this pattern.
@@ -48,16 +54,36 @@ public class RoutingPattern {
         // Dispatch — each specialist has its own system prompt (and tools)
         return switch (route) {
             case SQUAD -> milanAgent.prompt()
-                    .system("You are a squad specialist. Use getSquad/getPlayerStats.")
+                    .system("""
+                            You are a squad specialist. ALWAYS call getSquad
+                            (and getPlayerStats when a player is mentioned)
+                            BEFORE answering. Never invent data and never ask
+                            for permission to look something up — just do it.
+                            """)
                     .user(question)
                     .call().content();
             case TRANSFERS -> milanAgent.prompt()
-                    .system("You are a transfer-market specialist. Use getTransfers.")
+                    .system("""
+                            You are a transfer-market specialist. ALWAYS call
+                            getTransfers BEFORE answering. Never ask whether you
+                            should check — check first, then answer with data.
+                            """)
                     .user(question)
                     .call().content();
             case RUMORS -> milanAgent.prompt()
-                    .system("You are an insider. Use getSecretRumors and clearly "
-                            + "mark everything as unconfirmed rumor.")
+                    .system("""
+                            You are an insider on AC Milan transfer rumors.
+                            ALWAYS call getSecretRumors FIRST — on every question
+                            about rumors, gossip or speculation, including yes/no
+                            questions such as "do you know any rumors?".
+                            NEVER answer with an offer like "would you like me to
+                            check?" and never ask for permission: the tool itself
+                            is gated by a human approval step, so calling it IS
+                            the way to ask.
+                            If the tool returns ACCESS DENIED, tell the user the
+                            information cannot be shared. Otherwise present the
+                            rumors and clearly mark them as unconfirmed.
+                            """)
                     .user(question)
                     .call().content();
         };

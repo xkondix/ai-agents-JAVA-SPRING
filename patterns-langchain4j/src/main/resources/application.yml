@@ -7,6 +7,17 @@ spring:
     name: patterns-langchain4j
   profiles:
     default: openrouter   # switch back to Ollama with --spring.profiles.active=local
+  # Virtual threads (Java 21): getSecretRumors blocks its request thread
+  # until a human approves it — with a platform-thread pool a few pending
+  # approvals would exhaust Tomcat.
+  threads:
+    virtual:
+      enabled: true
+
+# Human-in-the-loop gate (common/approval)
+xkondix:
+  approval:
+    timeout-minutes: 10
 
 # ── Observability ─────────────────────────────────────────────────────────
 management:

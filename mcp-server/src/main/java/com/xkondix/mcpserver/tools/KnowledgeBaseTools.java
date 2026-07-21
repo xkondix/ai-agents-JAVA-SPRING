@@ -1,7 +1,6 @@
 package com.xkondix.mcpserver.tools;
 
 import com.xkondix.mcpserver.approval.ApprovalService;
-import com.xkondix.mcpserver.approval.ApprovalType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
@@ -22,6 +21,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *   - save_note   : requires approval before writing
  *   - delete_note : requires approval before deleting
  *   - search_notes: safe, no approval
+ *
+ * The guarded work is passed to approvalService.gate(...) as a lambda: the
+ * tool has no if/else boilerplate and CANNOT execute the action without a
+ * decision — the shape of the API enforces the rule.
  *
  * This works here because mcp-server runs over HTTP (SYNC_HTTP_SSE), so the
  * Approval REST API on :8081 is reachable and approve/reject can unblock the
@@ -49,17 +52,17 @@ public class KnowledgeBaseTools {
             @ToolParam(description = "Note content") String content) {
         log.info("[MCP] save_note PENDING APPROVAL title={}", title);
 
-        boolean approved = approvalService.requestApproval(
-                ApprovalType.SAVE_NOTE, "save_note",
+        return approvalService.gate(
+                "SAVE_NOTE", "save_note",
                 "Save note: " + title,
-                "TITLE: " + title + "\nCONTENT:\n" + content);
-
-        if (!approved) return "REJECTED: Note was not saved.";
-
-        String id = "note-" + Instant.now().toEpochMilli();
-        notes.put(id, "[" + title + "] " + content);
-        log.info("[MCP] save_note id={} title={}", id, title);
-        return "Saved: " + id;
+                "TITLE: " + title + "\nCONTENT:\n" + content,
+                () -> {
+                    String id = "note-" + Instant.now().toEpochMilli();
+                    notes.put(id, "[" + title + "] " + content);
+                    log.info("[MCP] save_note id={} title={}", id, title);
+                    return "Saved: " + id;
+                },
+                "REJECTED: Note was not saved.");
     }
 
     @Tool(description = """
@@ -76,16 +79,16 @@ public class KnowledgeBaseTools {
             return "ERROR: No note found with id: " + id;
         }
 
-        boolean approved = approvalService.requestApproval(
-                ApprovalType.DELETE_NOTE, "delete_note",
+        return approvalService.gate(
+                "DELETE_NOTE", "delete_note",
                 "Delete note: " + id,
-                "ID: " + id + "\nCONTENT: " + notes.get(id));
-
-        if (!approved) return "REJECTED: Note was not deleted.";
-
-        notes.remove(id);
-        log.info("[MCP] delete_note id={} deleted", id);
-        return "Deleted: " + id;
+                "ID: " + id + "\nCONTENT: " + notes.get(id),
+                () -> {
+                    notes.remove(id);
+                    log.info("[MCP] delete_note id={} deleted", id);
+                    return "Deleted: " + id;
+                },
+                "REJECTED: Note was not deleted.");
     }
 
     @Tool(description = """
