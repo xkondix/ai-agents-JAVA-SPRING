@@ -16,6 +16,10 @@ mvn clean package -DskipTests
 # JAR: target/code-mcp-server-1.0.0-SNAPSHOT.jar
 ```
 
+> The configuration is baked into the JAR at build time. Changing
+> `application.yml` in `src/` has no effect until you rebuild — a classic
+> surprise when the server keeps using the old settings after a restart.
+
 ## Transport modes
 
 This server can run in two transport modes. The mode is selected with the
@@ -128,7 +132,12 @@ HTTP MCP server requires the `mcp-remote` stdio→HTTP bridge.
 | `write_file` | **Required** | Overwrites a file |
 | `create_file` | **Required** | Creates a new file |
 | `move_file` | **Required** | Moves/renames a file |
+| `move_directory` | **Required** | Moves/renames a directory |
 | `delete_file` | **Double** | Deletes a file (irreversible) |
+
+Writes are restricted by `code-mcp.allowed-extensions` (Java, XML, yml,
+Markdown, JS/JSX/TS, SQL, `.imports`, …) and `code-mcp.ignored-dirs`
+(`target`, `node_modules`, `.git`, …) in `application.yml`.
 
 ---
 
@@ -148,10 +157,16 @@ In **STDIO mode** this is problematic:
 - Additionally, `requestApproval()` blocks the STDIO thread on `future.get()`
   while waiting for a decision that can only arrive over a separate HTTP channel.
 
-**Therefore, in this project the Approval Flow is demonstrated on the HTTP-based
-`mcp-server` (port 8081) instead**, which is a pure HTTP MCP server with no
-STDIO conflict. This `code-mcp-server` keeps the approval code as a reference,
-but to run it live, use Mode 2 (HTTP + mcp-remote) above.
+**Therefore, in this project the Approval Flow runs on the HTTP-based
+`mcp-server` (port 8081)** and on both patterns modules (8087, 8088), which are
+plain web applications with no STDIO conflict. This `code-mcp-server` keeps its
+own copy of the approval code as a reference; to run it live, use Mode 2
+(HTTP + mcp-remote) above.
+
+> Note on the shared mechanism: the reusable gate now lives in
+> `common/approval` (`HumanApprovalService`, used by mcp-server and the
+> patterns modules). `code-mcp-server` deliberately stays on its local copy —
+> it exists to illustrate the STDIO-vs-HTTP contrast, so it is kept untouched.
 
 ### Approval REST API (HTTP mode only)
 
@@ -176,3 +191,6 @@ In the main `pom.xml`:
 ```xml
 <module>code-mcp-server</module>
 ```
+
+> Currently commented out in the parent POM: the server is built and run as a
+> standalone JAR for Claude Desktop, so it is not part of the reactor build.

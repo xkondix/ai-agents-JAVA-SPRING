@@ -1,26 +1,24 @@
+# ── Base (profile-independent) ────────────────────────────────────────────
 server:
   port: 8085
 
 spring:
   application:
     name: spring-ai-agent-mcp
+  profiles:
+    default: openrouter   # switch back to Ollama with --spring.profiles.active=local
   main:
     allow-bean-definition-overriding: true
   autoconfigure:
+    # Chat provider is selected per profile via spring.ai.model.chat.
+    # Only the non-chat OpenAI autoconfigurations stay excluded permanently.
     exclude:
-      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   ai:
-    ollama:
-      base-url: http://localhost:11434
-      chat:
-        options:
-          model: llama3.1:8b
-          temperature: 0.3
     # Spring AI 1.1+ — GenAI Semantic Conventions (OTel)
     chat:
       observations:
@@ -30,16 +28,13 @@ spring:
       client:
         enabled: true
         type: SYNC
-        # FIX: connections must live under a TRANSPORT key (sse / streamable-http).
-        # The previous `client.connections` prefix does not exist, so Spring Boot
-        # silently ignored it -> ZERO MCP clients -> zero tools for the model.
+        # Connections must live under a TRANSPORT key (sse / streamable-http).
         sse:
           connections:
             java-mcp-server:
               url: http://localhost:8081   # base URL only; /sse endpoint is the default
             # code-mcp-server runs in STDIO mode by default (Claude Desktop).
-            # Enable this ONLY when it runs with transport=SYNC_HTTP_SSE,
-            # otherwise the failed connection breaks application startup:
+            # Enable ONLY when it runs with transport=SYNC_HTTP_SSE:
             # code-mcp-server:
             #   url: http://localhost:8086
 
@@ -62,5 +57,41 @@ management:
 logging:
   level:
     com.xkondix: DEBUG
-    com.xkondix.springai.mcp.config: TRACE   # shows "Injected trace context..." per MCP request
+    com.xkondix.springai.mcp.config: TRACE   # "Injected trace context..." per MCP request
     org.springframework.ai: INFO
+
+---
+# ── Profile: local — Ollama on this machine ───────────────────────────────
+spring:
+  config:
+    activate:
+      on-profile: local
+  ai:
+    model:
+      chat: ollama   # activates only the Ollama chat autoconfiguration
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          model: llama3.1:8b
+          temperature: 0.3
+
+---
+# ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
+# API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
+# Spring AI appends /v1/chat/completions itself — base-url WITHOUT /v1
+# (unlike LangChain4j and raw-agent).
+spring:
+  config:
+    activate:
+      on-profile: openrouter
+  ai:
+    model:
+      chat: openai   # activates only the OpenAI chat autoconfiguration
+    openai:
+      base-url: https://openrouter.ai/api
+      api-key: ${OPENROUTER_API_KEY}
+      chat:
+        options:
+          model: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
+          temperature: 0.3

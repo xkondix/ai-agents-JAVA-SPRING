@@ -14,7 +14,7 @@
     <artifactId>spring-ai-agent-local</artifactId>
     <name>Spring AI Agent Local - ChatClient + Advisors + local tools</name>
     <description>
-        Demonstrates the agent loop concept using Spring AI 1.0.3
+        Demonstrates the agent loop concept using Spring AI
         with LOCAL tools (@Tool annotation, same process).
 
         1. RAW LOOP    - same manual loop as in langchain4j-agent-local for comparison
@@ -33,16 +33,19 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Both model starters are on the classpath; the ACTIVE PROFILE picks
+             the provider via spring.ai.model.chat (ollama | openai), so only
+             one ChatModel bean is ever created:
+               profile local      → Ollama on localhost:11434
+               profile openrouter → OpenAI-compatible API (default profile)  -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-ollama</artifactId>
         </dependency>
-
-        <!-- OpenAI / OpenRouter (commented out until API key is configured) -->
-        <!-- <dependency>
+        <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-openai</artifactId>
-        </dependency> -->
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.ai</groupId>

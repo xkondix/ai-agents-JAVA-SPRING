@@ -1,0 +1,85 @@
+# ── Base (profile-independent) ────────────────────────────────────────────
+server:
+  port: 8088
+
+spring:
+  application:
+    name: patterns-spring-ai
+  profiles:
+    default: openrouter   # switch back to Ollama with --spring.profiles.active=local
+  # Virtual threads (Java 21): getSecretRumors blocks its request thread
+  # until a human approves it — with a platform-thread pool a few pending
+  # approvals would exhaust Tomcat.
+  threads:
+    virtual:
+      enabled: true
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+  ai:
+    chat:
+      observations:
+        include-prompt: true
+        include-completion: true
+
+# Human-in-the-loop gate (common/approval)
+xkondix:
+  approval:
+    timeout-minutes: 10
+
+# ── Observability ─────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
+    metrics:
+      export:
+        url: http://localhost:4318/v1/metrics
+
+logging:
+  level:
+    com.xkondix: DEBUG
+    org.springframework.ai: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  ai:
+    model:
+      chat: ollama
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          model: llama3.1:8b
+          temperature: 0.3
+
+---
+# API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
+spring:
+  config:
+    activate:
+      on-profile: openrouter
+  ai:
+    model:
+      chat: openai
+    openai:
+      base-url: https://openrouter.ai/api
+      api-key: ${OPENROUTER_API_KEY}
+      chat:
+        options:
+          model: openai/gpt-4o-mini
+          temperature: 0.3

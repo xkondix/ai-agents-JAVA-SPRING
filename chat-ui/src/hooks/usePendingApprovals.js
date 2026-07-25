@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
+import { fetchPendingApprovals } from '../api/approvalsApi.js'
 
-// Approval Flow is served by mcp-server (HTTP) on port 8081.
-const APPROVALS_URL = 'http://localhost:8081/approvals'
 const INTERVAL = 5_000 // 5 seconds
 
 /**
- * Polls mcp-server for pending approvals every 5 seconds.
+ * Polls EVERY approval source (mcp-server + both patterns modules) every
+ * 5 seconds and merges the pending requests into one list.
+ * Each item carries `source` / `sourceLabel` so the UI knows where to send
+ * the decision.
+ *
  * Returns { approvals, count, refresh, loading }
  */
 export function usePendingApprovals() {
@@ -14,15 +17,10 @@ export function usePendingApprovals() {
 
   const fetchApprovals = useCallback(async () => {
     try {
-      const res = await fetch(APPROVALS_URL, {
-        signal: AbortSignal.timeout(3000)
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setApprovals(data.filter(a => a.status === 'PENDING'))
-      }
+      const all = await fetchPendingApprovals()
+      setApprovals(all.filter(a => a.status === 'PENDING'))
     } catch {
-      // server might be offline — silently ignore
+      // all sources offline — silently ignore
     }
   }, [])
 

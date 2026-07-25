@@ -1,5 +1,6 @@
 package com.xkondix.mcpserver.approval;
 
+import com.xkondix.common.approval.PendingApproval;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,16 +21,24 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and drives the decision from the test thread — exactly like the real
  * flow where the tool call and the approve/reject arrive on different
  * threads.
+ *
+ * The mechanism now lives in common (HumanApprovalService); ApprovalService
+ * is the Spring bean for this module, so these tests cover both. Types are
+ * plain Strings and PendingApproval instead of the module-local enums —
+ * one payload shape for every source the Chat UI polls.
  */
 @Timeout(value = 10, unit = TimeUnit.SECONDS)
 class ApprovalServiceTest {
+
+    /** Timeout in minutes — long enough that it never fires during a test. */
+    private static final long TIMEOUT_MINUTES = 5;
 
     private ApprovalService service;
     private ExecutorService executor;
 
     @BeforeEach
     void setUp() {
-        service = new ApprovalService();
+        service = new ApprovalService(TIMEOUT_MINUTES);
         executor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
@@ -42,7 +51,7 @@ class ApprovalServiceTest {
 
     private Future<Boolean> submitRequest() {
         return executor.submit(() -> service.requestApproval(
-                ApprovalType.SAVE_NOTE, "save_note",
+                "SAVE_NOTE", "save_note",
                 "Save a note titled 'demo'", "note content"));
     }
 
@@ -93,10 +102,45 @@ class ApprovalServiceTest {
         var pending = service.getPending();
         assertThat(pending).hasSize(1);
         assertThat(pending.get(0).getToolName()).isEqualTo("save_note");
-        assertThat(pending.get(0).getStatus()).isEqualTo(ApprovalStatus.PENDING);
+        assertThat(pending.get(0).getType()).isEqualTo("SAVE_NOTE");
+        assertThat(pending.get(0).getStatus()).isEqualTo("PENDING");
 
         service.approve(id); // cleanup — unblock the waiting thread
         result.get(2, TimeUnit.SECONDS);
+    }
+
+    // ── Generic gate ──────────────────────────────────────────────────────
+
+    @Test
+    void gateRunsGuardedAction_onlyAfterApproval() throws Exception {
+        Future<String> result = executor.submit(() -> service.gate(
+                "SAVE_NOTE", "save_note",
+                "Save a note titled 'demo'", "note content",
+                () -> "EXECUTED",
+                "REJECTED: not saved."));
+
+        String id = awaitPendingId();
+        service.approve(id);
+
+        assertThat(result.get(2, TimeUnit.SECONDS)).isEqualTo("EXECUTED");
+    }
+
+    @Test
+    void gateSkipsGuardedAction_whenRejected() throws Exception {
+        // The action must NOT run — a flag proves the lambda was never called
+        boolean[] executed = { false };
+
+        Future<String> result = executor.submit(() -> service.gate(
+                "DELETE_NOTE", "delete_note",
+                "Delete note 'demo'", "id=demo",
+                () -> { executed[0] = true; return "EXECUTED"; },
+                "REJECTED: not deleted."));
+
+        String id = awaitPendingId();
+        service.reject(id);
+
+        assertThat(result.get(2, TimeUnit.SECONDS)).isEqualTo("REJECTED: not deleted.");
+        assertThat(executed[0]).isFalse();
     }
 
     // ── Unknown ids ───────────────────────────────────────────────────────
@@ -133,7 +177,7 @@ class ApprovalServiceTest {
         String firstId = awaitPendingId();
 
         Future<Boolean> second = executor.submit(() -> service.requestApproval(
-                ApprovalType.DELETE_NOTE, "delete_note",
+                "DELETE_NOTE", "delete_note",
                 "Delete note 'demo'", "id=demo"));
 
         long deadline = System.currentTimeMillis() + 5_000;
@@ -144,7 +188,7 @@ class ApprovalServiceTest {
         assertThat(service.getPending()).hasSize(2);
 
         String secondId = service.getPending().stream()
-                .map(ApprovalRequest::getId)
+                .map(PendingApproval::getId)
                 .filter(id -> !id.equals(firstId))
                 .findFirst()
                 .orElseThrow();

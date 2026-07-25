@@ -1,33 +1,16 @@
+# ── Base (profile-independent) ────────────────────────────────────────────
 server:
   port: 8082
 
 spring:
   application:
     name: langchain4j-agent-local
+  profiles:
+    default: openrouter   # switch back to Ollama with --spring.profiles.active=local
   data:
     redis:
       host: localhost
       port: 6379
-
-langchain4j:
-  ollama:
-    chat-model:
-      base-url: http://localhost:11434
-      # llama3.1 (not gemma3): local tools require function calling,
-      # which gemma3 does not support — the model would only narrate
-      # tool usage in plain text instead of returning tool_calls.
-      model-name: llama3.1:8b
-      temperature: 0.3
-      timeout: 120s
-      log-requests: true
-      log-responses: true
-  # Uncomment to use OpenAI / OpenRouter instead:
-  # open-ai:
-  #   chat-model:
-  #     api-key: ${OPENAI_API_KEY}
-  #     base-url: https://openrouter.ai/api/v1
-  #     model-name: anthropic/claude-sonnet-4-5
-  #     temperature: 0.3
 
 # ── Observability ─────────────────────────────────────────────────────────
 management:
@@ -49,3 +32,43 @@ logging:
   level:
     com.xkondix: DEBUG
     dev.langchain4j: INFO
+
+---
+# ── Profile: local — Ollama on this machine ───────────────────────────────
+# LC4j starters are property-driven: only the model whose properties exist
+# in the active profile gets auto-configured, so ollama/open-ai never clash.
+spring:
+  config:
+    activate:
+      on-profile: local
+
+langchain4j:
+  ollama:
+    chat-model:
+      base-url: http://localhost:11434
+      # llama3.1 (not gemma3): local tools require function calling,
+      # which gemma3 does not support.
+      model-name: llama3.1:8b
+      temperature: 0.3
+      timeout: 120s
+      log-requests: true
+      log-responses: true
+
+---
+# ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
+# API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
+# LangChain4j needs the /v1 suffix in base-url (unlike Spring AI).
+spring:
+  config:
+    activate:
+      on-profile: openrouter
+
+langchain4j:
+  open-ai:
+    chat-model:
+      base-url: https://openrouter.ai/api/v1
+      api-key: ${OPENROUTER_API_KEY}
+      model-name: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
+      temperature: 0.3
+      log-requests: true    # LC4j masks the Authorization header in logs
+      log-responses: true

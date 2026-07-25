@@ -1,27 +1,23 @@
+# ── Base (profile-independent) ────────────────────────────────────────────
 server:
   port: 8084
 
 spring:
   application:
     name: spring-ai-agent-local
+  profiles:
+    default: openrouter   # switch back to Ollama with --spring.profiles.active=local
   autoconfigure:
+    # Chat provider is selected per profile via spring.ai.model.chat.
+    # Only the non-chat OpenAI autoconfigurations stay excluded permanently —
+    # we never use embeddings/audio/image/moderation in this module.
     exclude:
-      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   ai:
-    ollama:
-      base-url: http://localhost:11434
-      chat:
-        options:
-          # llama3.1 (not gemma3): local tools require function calling,
-          # which gemma3 does not support — the model would only narrate
-          # tool usage in plain text instead of returning tool_calls.
-          model: llama3.1:8b
-          temperature: 0.3
     # Spring AI 1.1+ — GenAI Semantic Conventions (OTel)
     chat:
       observations:
@@ -48,3 +44,41 @@ logging:
   level:
     com.xkondix: DEBUG
     org.springframework.ai: INFO
+
+---
+# ── Profile: local — Ollama on this machine ───────────────────────────────
+spring:
+  config:
+    activate:
+      on-profile: local
+  ai:
+    model:
+      chat: ollama   # activates only the Ollama chat autoconfiguration
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          # llama3.1 (not gemma3): local tools require function calling,
+          # which gemma3 does not support.
+          model: llama3.1:8b
+          temperature: 0.3
+
+---
+# ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
+# API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
+# Spring AI appends /v1/chat/completions itself — base-url WITHOUT /v1
+# (unlike LangChain4j and raw-agent).
+spring:
+  config:
+    activate:
+      on-profile: openrouter
+  ai:
+    model:
+      chat: openai   # activates only the OpenAI chat autoconfiguration
+    openai:
+      base-url: https://openrouter.ai/api
+      api-key: ${OPENROUTER_API_KEY}
+      chat:
+        options:
+          model: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
+          temperature: 0.3

@@ -1,0 +1,75 @@
+# ── Base (profile-independent) ────────────────────────────────────────────
+server:
+  port: 8087
+
+spring:
+  application:
+    name: patterns-langchain4j
+  profiles:
+    default: openrouter   # switch back to Ollama with --spring.profiles.active=local
+  # Virtual threads (Java 21): getSecretRumors blocks its request thread
+  # until a human approves it — with a platform-thread pool a few pending
+  # approvals would exhaust Tomcat.
+  threads:
+    virtual:
+      enabled: true
+
+# Human-in-the-loop gate (common/approval)
+xkondix:
+  approval:
+    timeout-minutes: 10
+
+# ── Observability ─────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
+    metrics:
+      export:
+        url: http://localhost:4318/v1/metrics
+
+logging:
+  level:
+    com.xkondix: DEBUG
+    dev.langchain4j: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+
+langchain4j:
+  ollama:
+    chat-model:
+      base-url: http://localhost:11434
+      model-name: llama3.1:8b
+      temperature: 0.3
+      timeout: 120s
+      log-requests: true
+      log-responses: true
+
+---
+# API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
+# LangChain4j needs the /v1 suffix in base-url (unlike Spring AI).
+spring:
+  config:
+    activate:
+      on-profile: openrouter
+
+langchain4j:
+  open-ai:
+    chat-model:
+      base-url: https://openrouter.ai/api/v1
+      api-key: ${OPENROUTER_API_KEY}
+      model-name: openai/gpt-4o-mini
+      temperature: 0.3
+      log-requests: true
+      log-responses: true

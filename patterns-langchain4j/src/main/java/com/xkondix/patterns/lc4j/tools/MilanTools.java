@@ -1,0 +1,72 @@
+package com.xkondix.patterns.lc4j.tools;
+
+import com.xkondix.common.approval.HumanApprovalService;
+import com.xkondix.common.milan.MilanKnowledgeBase;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+/**
+ * AC Milan domain tools — LangChain4j flavour (@Tool from dev.langchain4j).
+ * Thin wrappers over the shared MilanKnowledgeBase in common — the SAME
+ * data the patterns-spring-ai module exposes with Spring AI annotations.
+ *
+ * getSecretRumors is wrapped in the shared approval gate: the guarded work
+ * is a lambda passed to gate(...), so the disclosure CANNOT happen without
+ * a human decision. The call blocks until someone approves in the Chat UI —
+ * on the Tempo waterfall that shows up as a tool span growing in real time.
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class MilanTools {
+
+    private final HumanApprovalService approvalService;
+
+    @Tool("Returns the AC Milan squad for a given season year "
+            + "(available: 2007, 2024) with positions and ratings")
+    public String getSquad(@P("Season year, e.g. 2007") int year) {
+        log.info("[TOOL] getSquad year={}", year);
+        var squad = MilanKnowledgeBase.squad(year);
+        return squad.isEmpty()
+                ? "No data for season " + year + ". Available: "
+                    + MilanKnowledgeBase.availableSeasons()
+                : squad.toString();
+    }
+
+    @Tool("Returns AC Milan transfers; filter by window, e.g. '2006' or 'summer'. "
+            + "Empty filter returns all.")
+    public String getTransfers(@P("Window filter, may be empty") String window) {
+        log.info("[TOOL] getTransfers window={}", window);
+        return MilanKnowledgeBase.transfers(window).toString();
+    }
+
+    @Tool("Returns stats (position, shirt number, rating) for a player by name")
+    public String getPlayerStats(@P("Player full name") String name) {
+        log.info("[TOOL] getPlayerStats name={}", name);
+        var player = MilanKnowledgeBase.playerStats(name);
+        return player != null ? player.toString() : "Unknown player: " + name;
+    }
+
+    @Tool("SECRET transfer rumors with insider notes. Confidential — requires "
+            + "human approval before disclosure. Use only when the user "
+            + "explicitly asks about rumors.")
+    public String getSecretRumors() {
+        log.info("[TOOL] getSecretRumors — requesting human approval");
+
+        return approvalService.gate(
+                "SECRET_RUMORS", "getSecretRumors",
+                "Agent wants to disclose CONFIDENTIAL transfer rumors",
+                "Source: patterns-langchain4j (port 8087)\n"
+                        + "Tool: getSecretRumors()\n"
+                        + "Returns insider notes that are not public information.",
+                () -> MilanKnowledgeBase.secretRumors().toString(),
+                // The refusal goes back to the MODEL as a normal tool result —
+                // it will explain to the user that access was denied.
+                "ACCESS DENIED: a human reviewer rejected disclosure of the "
+                        + "confidential rumors (or the request timed out). "
+                        + "Tell the user you cannot share them.");
+    }
+}

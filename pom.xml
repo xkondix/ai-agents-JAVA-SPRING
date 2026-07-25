@@ -30,6 +30,8 @@
         <module>langchain4j-agent-mcp</module>
         <module>spring-ai-agent-local</module>
         <module>spring-ai-agent-mcp</module>
+        <module>patterns-langchain4j</module>
+        <module>patterns-spring-ai</module>
     </modules>
 
     <properties>
@@ -171,6 +173,12 @@
                     <version>3.13.0</version>
                     <configuration>
                         <release>${java.version}</release>
+                        <!-- Keep method parameter names in bytecode.
+                             spring-boot-starter-parent sets this for you; a custom
+                             parent must do it explicitly. Without it, @RequestParam /
+                             @PathVariable without an explicit name fail at runtime:
+                             "Name for argument of type [int] not specified..." -->
+                        <parameters>true</parameters>
                         <annotationProcessorPaths>
                             <path>
                                 <groupId>org.projectlombok</groupId>

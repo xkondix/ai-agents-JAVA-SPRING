@@ -1,26 +1,20 @@
+# ── Base (profile-independent) ────────────────────────────────────────────
 server:
   port: 8083
 
 spring:
   application:
     name: langchain4j-agent-mcp
+  profiles:
+    default: openrouter   # switch back to Ollama with --spring.profiles.active=local
 
-langchain4j:
-  ollama:
-    chat-model:
-      base-url: http://localhost:11434
-      model-name: llama3.1:8b
-      temperature: 0.3
-      timeout: 120s
-      log-requests: true
-      log-responses: true
-  # Uncomment to use OpenAI / OpenRouter instead:
-  # open-ai:
-  #   chat-model:
-  #     api-key: ${OPENAI_API_KEY}
-  #     base-url: https://openrouter.ai/api/v1
-  #     model-name: anthropic/claude-sonnet-4-5
-  #     temperature: 0.3
+# code-mcp-server connection (port 8086) — enable ONLY when that server runs
+# with transport=SYNC_HTTP_SSE; with STDIO the eager client init would kill
+# application startup.
+lc4j:
+  mcp:
+    code-server:
+      enabled: false
 
 # ── Observability ─────────────────────────────────────────────────────────
 management:
@@ -42,3 +36,39 @@ logging:
   level:
     com.xkondix: DEBUG
     dev.langchain4j: INFO
+
+---
+# ── Profile: local — Ollama on this machine ───────────────────────────────
+spring:
+  config:
+    activate:
+      on-profile: local
+
+langchain4j:
+  ollama:
+    chat-model:
+      base-url: http://localhost:11434
+      model-name: llama3.1:8b
+      temperature: 0.3
+      timeout: 120s
+      log-requests: true
+      log-responses: true
+
+---
+# ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
+# API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
+# LangChain4j needs the /v1 suffix in base-url (unlike Spring AI).
+spring:
+  config:
+    activate:
+      on-profile: openrouter
+
+langchain4j:
+  open-ai:
+    chat-model:
+      base-url: https://openrouter.ai/api/v1
+      api-key: ${OPENROUTER_API_KEY}
+      model-name: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
+      temperature: 0.3
+      log-requests: true    # LC4j masks the Authorization header in logs
+      log-responses: true

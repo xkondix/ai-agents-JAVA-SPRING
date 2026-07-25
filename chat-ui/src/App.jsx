@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RefreshCw, Bot, ShieldCheck } from 'lucide-react'
+import { RefreshCw, Bot, ShieldCheck, Workflow } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import AgentSelector from './components/AgentSelector.jsx'
 import ChatWindow from './components/ChatWindow.jsx'
@@ -53,8 +53,21 @@ export default function App() {
           />
         </div>
 
+        {/* patterns lab link */}
+        <div className="px-4 pt-3 border-t border-slate-800">
+          <Link
+            to="/patterns"
+            className="flex items-center gap-2 w-full px-3 py-2 rounded-xl
+                       bg-slate-800 hover:bg-slate-700 transition-colors"
+          >
+            <Workflow size={14} className="text-indigo-400" />
+            <span className="text-xs font-medium text-slate-300">Patterns Lab</span>
+            <span className="ml-auto text-[10px] text-slate-500">8087 vs 8088</span>
+          </Link>
+        </div>
+
         {/* approvals link */}
-        <div className="px-4 py-3 border-t border-slate-800">
+        <div className="px-4 py-3">
           <Link
             to="/approvals"
             className="flex items-center justify-between w-full px-3 py-2 rounded-xl
@@ -103,6 +116,7 @@ export default function App() {
               <p>langchain4j-agent-mcp   → port 8083</p>
               <p>spring-ai-agent-local   → port 8084</p>
               <p>spring-ai-agent-mcp     → port 8085</p>
+              <p>patterns → Patterns Lab (8087 vs 8088)</p>
             </div>
           </div>
         )}
