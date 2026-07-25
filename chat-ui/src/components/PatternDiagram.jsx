@@ -91,31 +91,47 @@ function ChainDiagram() {
 }
 
 /**
- * Routing — note the extra HUMAN APPROVAL step on the rumors branch:
- * that specialist calls getSecretRumors(), which blocks on the shared
- * approval gate until someone decides in the Chat UI.
+ * Routing — with the human-in-the-loop gate on the confidential branch.
+ *
+ * Order matters and is easy to get wrong: the gate sits AFTER the rumors
+ * specialist, not before it. The specialist is the one that decides the
+ * secret tool is needed; only then does getSecretRumors() block on human
+ * approval. Asking a human first would mean asking before anyone knows
+ * whether the data is needed at all.
+ *
+ * The two arrows between them show the round trip:
+ *   specialist --calls--> approval gate --data or ACCESS DENIED--> specialist
  */
 function RoutingDiagram() {
   return (
-    <svg viewBox="0 0 400 366" className="w-full">
+    <svg viewBox="0 0 400 390" className="w-full">
       <Defs />
       <Box x={4}   y={126} w={100} h={48} label="Input" sub="question" />
       <Arrow d="M104 150 L128 150" />
       <Box x={130} y={120} w={136} h={60} label="Router" sub="cheap classifier" accent={C.control} />
       <Arrow d="M266 136 L282 136 L282 46 L298 46" />
       <Arrow d="M266 150 L298 150" />
-      <Arrow d="M266 164 L282 164 L282 268 L298 268" />
+      <Arrow d="M266 164 L282 164 L282 262 L298 262" />
       <Box x={292} y={20}  w={106} h={52} label="Squad" sub="specialist" accent={C.llm} />
       <Box x={292} y={124} w={106} h={52} label="Transfers" sub="specialist" accent={C.llm} />
-      <Box x={292} y={242} w={106} h={52} label="Rumors" sub="specialist" accent={C.llm} />
-      {/* human-in-the-loop gate on the confidential branch */}
-      <Arrow d="M345 294 L345 310" />
-      <Box x={252} y={312} w={146} h={50} label="Approval 🔒" sub="human decides" accent={C.control} />
-      <text x={126} y={330} textAnchor="middle" fill={C.sub} fontSize="14.5">
-        getSecretRumors()
+      <Box x={292} y={236} w={106} h={52} label="Rumors" sub="specialist" accent={C.llm} />
+
+      {/* round trip: the specialist calls the gated tool and waits */}
+      <Arrow d="M318 288 L318 322" />
+      <Arrow d="M372 322 L372 288" />
+      <Box x={292} y={324} w={106} h={52} label="Approval 🔒" sub="human decides" accent={C.control} />
+
+      <text x={140} y={300} textAnchor="middle" fill={C.sub} fontSize="14.5">
+        specialist calls
       </text>
-      <text x={126} y={350} textAnchor="middle" fill={C.sub} fontSize="14.5">
-        blocks until approved
+      <text x={140} y={320} textAnchor="middle" fill={C.sub} fontSize="14.5">
+        getSecretRumors() and
+      </text>
+      <text x={140} y={340} textAnchor="middle" fill={C.sub} fontSize="14.5">
+        blocks; data or
+      </text>
+      <text x={140} y={360} textAnchor="middle" fill={C.sub} fontSize="14.5">
+        ACCESS DENIED returns
       </text>
     </svg>
   )

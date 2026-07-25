@@ -1,6 +1,6 @@
 package com.xkondix.lc4j.mcp.service;
 
-import com.xkondix.lc4j.mcp.config.TracingToolProvider;
+import com.xkondix.common.observability.TracingToolProvider;
 import dev.langchain4j.mcp.client.McpClient;
 import dev.langchain4j.mcp.McpToolProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
@@ -30,9 +30,10 @@ import java.util.Optional;
  * It just sees a flat list of tools and picks the right one.
  * This is the core MCP orchestrator demo for Presentation 2.
  *
- * Observability: McpToolProvider is wrapped in TracingToolProvider, so every
- * tool execution shows up as a "tool_call <name>" span in Tempo — the LC4j
- * trace now has the same shape as Spring AI and raw-agent traces
+ * Observability: McpToolProvider is wrapped in TracingToolProvider (module
+ * `common`, shared with patterns-langchain4j), so every tool execution shows
+ * up as a "tool_call <name>" span in Tempo — the LC4j trace has the same
+ * shape as Spring AI and raw-agent traces
  * (http post → chat → tool_call → chat).
  */
 @Slf4j

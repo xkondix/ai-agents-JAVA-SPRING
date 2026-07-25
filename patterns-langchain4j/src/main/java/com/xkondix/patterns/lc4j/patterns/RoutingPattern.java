@@ -1,10 +1,10 @@
 package com.xkondix.patterns.lc4j.patterns;
 
-import com.xkondix.patterns.lc4j.tools.MilanTools;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
+import dev.langchain4j.service.tool.ToolProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +18,10 @@ import org.springframework.stereotype.Service;
  * The Agentic DSL also offers conditionalBuilder() with predicates on the
  * shared state — we use the switch here because it makes the dispatch
  * visible for the demo; swapping to conditionalBuilder is a 1:1 exercise.
+ *
+ * Specialists take tools from an instrumented ToolProvider (ToolsConfig)
+ * rather than AiServices.tools(...), so every execution — including the
+ * approval-gated getSecretRumors — appears as a "tool_call <name>" span.
  *
  * LESSON LEARNED — a specialist prompt must COMMAND, not suggest:
  * "Use getSecretRumors" made the model answer "Yes, I can check that for
@@ -76,16 +80,16 @@ public class RoutingPattern {
     private final TransferSpecialist transferSpecialist;
     private final RumorSpecialist rumorSpecialist;
 
-    public RoutingPattern(ChatModel chatModel, MilanTools milanTools) {
+    public RoutingPattern(ChatModel chatModel, ToolProvider milanToolProvider) {
         this.router = AiServices.builder(Router.class)
                 .chatModel(chatModel)
                 .build();
         this.squadSpecialist = AiServices.builder(SquadSpecialist.class)
-                .chatModel(chatModel).tools(milanTools).build();
+                .chatModel(chatModel).toolProvider(milanToolProvider).build();
         this.transferSpecialist = AiServices.builder(TransferSpecialist.class)
-                .chatModel(chatModel).tools(milanTools).build();
+                .chatModel(chatModel).toolProvider(milanToolProvider).build();
         this.rumorSpecialist = AiServices.builder(RumorSpecialist.class)
-                .chatModel(chatModel).tools(milanTools).build();
+                .chatModel(chatModel).toolProvider(milanToolProvider).build();
     }
 
     public String run(String question) {

@@ -15,6 +15,7 @@
     <name>Common - Shared DTOs, contracts and utilities</name>
     <description>
         Shared module: DTOs, request/response models, tool contracts,
+        approval flow, AC Milan domain data,
         and shared observability auto-configuration.
         All agent and MCP server modules depend on this.
     </description>
@@ -67,14 +68,23 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- LangChain4j core — ONLY for the GenAI metrics/tracing listener.
-             Optional: the listener auto-config activates via
-             @ConditionalOnClass(ChatModelListener) exclusively in modules
-             that already ship LangChain4j; Spring AI and raw modules never
-             see this class. Version managed by langchain4j-bom (parent). -->
+        <!-- LangChain4j — ONLY for the GenAI metrics/tracing listener and the
+             TracingToolProvider decorator. Both are OPTIONAL dependencies:
+             the auto-config activates via @ConditionalOnClass exclusively in
+             modules that already ship LangChain4j; Spring AI and raw modules
+             never see these classes.
+             langchain4j-core → ChatModelListener (metrics/spans listener)
+             langchain4j      → ToolProvider / ToolExecutor / ToolSpecifications
+                                (dev.langchain4j.service.tool lives here, not in core)
+             Versions managed by langchain4j-bom (parent).                -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-core</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j</artifactId>
             <optional>true</optional>
         </dependency>
         <dependency>

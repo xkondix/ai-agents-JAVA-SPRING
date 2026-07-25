@@ -1,10 +1,10 @@
 package com.xkondix.patterns.lc4j.patterns;
 
-import com.xkondix.patterns.lc4j.tools.MilanTools;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
+import dev.langchain4j.service.tool.ToolProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +22,14 @@ import org.springframework.stereotype.Service;
  * are full sub-agents supervised by a coordinator — same idea, heavier
  * machinery; we keep the tool-based variant for the demo because the
  * planning behavior is identical and easier to read in a single class.
+ *
+ * Note this is a MUCH cheaper interpretation than the Spring AI module,
+ * where each worker is its own LLM call (planner → workers → synthesis).
+ * Same pattern name, two readings — compare the traces: ~2 chat spans here
+ * versus a dozen there. Worth showing side by side.
+ *
+ * Tools come from an instrumented ToolProvider (see ToolsConfig), so every
+ * execution shows up as a "tool_call <name>" span.
  *
  * Trace signature: irregular — "chat", then a tool sequence you did NOT
  * know in advance, then "chat"; every run may produce a different shape.
@@ -44,10 +52,10 @@ public class OrchestratorWorkersPattern {
 
     private final Orchestrator orchestrator;
 
-    public OrchestratorWorkersPattern(ChatModel chatModel, MilanTools milanTools) {
+    public OrchestratorWorkersPattern(ChatModel chatModel, ToolProvider milanToolProvider) {
         this.orchestrator = AiServices.builder(Orchestrator.class)
                 .chatModel(chatModel)
-                .tools(milanTools)
+                .toolProvider(milanToolProvider)
                 .build();
     }
 
