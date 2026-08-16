@@ -1,6 +1,6 @@
 package com.xkondix.claude.mcp.server.tools;
 
-import com.xkondix.claude.mcp.server.config.CodeMcpProperties;
+import com.xkondix.claude.mcp.server.config.ClaudeMcpProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -10,19 +10,24 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.stream.Stream;
 
 /**
- * File operations for the MCP tools, sandboxed by CodeMcpProperties:
+ * File operations for the MCP tools, sandboxed by ClaudeMcpProperties:
  * every path is resolved against projectRoot and rejected if it escapes it,
  * and reads/writes are limited to allowedExtensions.
  *
- * CodeMcpProperties is a record, so accessors are projectRoot() /
+ * ClaudeMcpProperties is a record, so accessors are projectRoot() /
  * allowedExtensions() / ignoredDirs() — no get* prefixes.
+ *
+ * Two error styles on purpose: a path that escapes the sandbox throws
+ * SecurityException (a programming/abuse signal that must not be mistaken for
+ * data), while everyday problems — missing file, wrong extension — return an
+ * "ERROR: ..." string the model can read and act on.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class FileService {
 
-    private final CodeMcpProperties props;
+    private final ClaudeMcpProperties props;
 
     public Path resolveAndValidate(String relativePath) {
         Path root = Path.of(props.projectRoot()).normalize();

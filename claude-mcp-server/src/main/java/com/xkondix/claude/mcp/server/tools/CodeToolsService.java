@@ -25,7 +25,8 @@ import org.springframework.stereotype.Service;
  * without it every argument is published as arg0/arg1 and the client fills in
  * the wrong keys. spring-boot-starter-parent sets that flag, which is the whole
  * reason this module uses it as its parent instead of the project parent.
- * If arg0 ever comes back, check the compiler flag first — not the annotations.
+ * ToolSchemaContractTest asserts this, so the regression cannot come back
+ * silently.
  *
  * Tool names ARE declared explicitly. Derivation from the method name works,
  * but it makes the wire contract a side effect of a refactor: rename the method
@@ -38,8 +39,8 @@ import org.springframework.stereotype.Service;
  * OBSERVABILITY: each call is wrapped in a "mcp_tool <name>" span created by
  * hand — there is no agent framework here to instrument, the caller is an
  * external client we do not control. It sends no traceparent, so every call
- * forms its own trace (Tempo will show one-span traces; that is correct, not
- * a propagation bug).
+ * forms its own trace (Tempo shows one-span traces with Services: 1; that is
+ * correct, not a propagation bug).
  */
 @Slf4j
 @Service
@@ -197,7 +198,6 @@ public class CodeToolsService {
         if (!"DELETE".equals(confirm)) {
             return "ERROR: confirm field must be exactly: DELETE";
         }
-        log.warn("[TOOL] delete_file (irreversible): {}", path);
         return traced("delete_file", path, () -> fileService.deleteFile(path));
     }
 
@@ -209,14 +209,23 @@ public class CodeToolsService {
      * exception: that text is what the model reads, and a readable message is
      * more useful to it than a protocol-level error it cannot inspect.
      *
+     * NOTE ON LOG PLACEMENT. The "[TOOL] ..." line is emitted INSIDE the span
+     * scope, not before it. When it sat above tracer.withSpan(...) it came out
+     * with an empty correlation field while the FileService line right below it
+     * carried the trace id — one orphan line per call, invisible in Loki when
+     * filtering by trace. The Micrometer scope is a ThreadLocal, so only code
+     * running between withSpan() and close() gets the ids into the MDC.
+     *
      * Attribute names follow the OTel GenAI semantic conventions where they
      * exist (gen_ai.tool.name), plus `framework` — the same label the agent
      * modules use, so every panel in the Grafana dashboard can slice by it.
+     * mcp.transport is deliberately NOT tagged here: it is a resource attribute
+     * in application.yml, true for the whole service, so repeating it on every
+     * span would just cost bytes.
      */
     private String traced(String toolName, String argsSummary, FileOperation operation) {
-        log.info("[TOOL] {}: {}", toolName, argsSummary);
-
         if (tracer == null) {
+            log.info("[TOOL] {}: {}", toolName, argsSummary);
             return execute(toolName, operation);
         }
 
@@ -224,10 +233,10 @@ public class CodeToolsService {
         span.tag("gen_ai.operation.name", "execute_tool");
         span.tag("gen_ai.tool.name", toolName);
         span.tag("mcp.tool.args", String.valueOf(argsSummary));
-        span.tag("mcp.transport", "stdio");
         span.tag("framework", "spring-ai-mcp-server");
 
         try (Tracer.SpanInScope ignored = tracer.withSpan(span.start())) {
+            log.info("[TOOL] {}: {}", toolName, argsSummary);
             String result = execute(toolName, operation);
             span.tag("mcp.tool.result.length", String.valueOf(result.length()));
             return result;

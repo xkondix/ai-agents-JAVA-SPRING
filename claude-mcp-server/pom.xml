@@ -7,15 +7,13 @@
 
     <!-- STANDALONE MODULE — deliberately NOT part of ai-agents-JAVA-SPRING.
          It runs Spring AI 2.0 / Spring Boot 4 while the rest of the project
-         stays on Spring AI 1.1.4 / Boot 3.5. Using spring-boot-starter-parent
-         also gives us -parameters for free, which the custom parent had to
-         configure by hand.
-    <parent>
-        <groupId>com.xkondix</groupId>
-        <artifactId>ai-agents-JAVA-SPRING</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
-    </parent>
-    -->
+         stays on Spring AI 1.1.4 / Boot 3.5.
+
+         spring-boot-starter-parent is not cosmetic here: it sets -parameters.
+         @McpToolParam has no `name` attribute, so reflection metadata is the
+         ONLY source of parameter names in the generated JSON schema. Without
+         the flag every argument is published as arg0/arg1 and arrives as null,
+         with no error anywhere. ToolSchemaContractTest asserts it. -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
@@ -31,6 +29,11 @@
     <properties>
         <java.version>21</java.version>
         <spring-ai.version>2.0.0</spring-ai.version>
+        <!-- Boot manages io.opentelemetry:opentelemetry-bom (1.55.0) but NOT the
+             io.opentelemetry.instrumentation group, so the Logback appender needs
+             an explicit version. Instrumentation 2.21.0 is the release that
+             targets OTel SDK 1.55.0 — check that pairing when bumping Boot. -->
+        <otel-instrumentation.version>2.21.0-alpha</otel-instrumentation.version>
     </properties>
 
     <dependencyManagement>
@@ -73,18 +76,35 @@
 
              spring-boot-starter-opentelemetry (new in Boot 4) is the whole
              package: OpenTelemetry API + SDK auto-configuration,
-             micrometer-tracing-bridge-otel, the OTLP span exporter and
-             micrometer-registry-otlp for metrics. Actuator is NOT needed —
-             there is no HTTP server here to expose endpoints on. -->
+             micrometer-tracing-bridge-otel, the OTLP exporters for traces and
+             logs, and micrometer-registry-otlp for metrics. Actuator is NOT
+             needed — there is no HTTP server here to expose endpoints on. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-opentelemetry</artifactId>
+        </dependency>
+
+        <!-- Logback -> OpenTelemetry logs bridge. Boot 4 auto-configures the
+             logging SDK and its OTLP exporter, but does NOT connect Logback to
+             it: the appender must be declared in logback-spring.xml and armed
+             with OpenTelemetryAppender.install(). Without this dependency the
+             logs endpoint binds, the SDK starts, and nothing ever reaches Loki. -->
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-logback-appender-1.0</artifactId>
+            <version>${otel-instrumentation.version}</version>
         </dependency>
 
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

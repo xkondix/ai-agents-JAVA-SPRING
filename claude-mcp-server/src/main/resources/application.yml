@@ -16,7 +16,7 @@ spring:
     # accidentally start Tomcat and corrupt the JSON-RPC stream.
     web-application-type: none
   application:
-    name: claude-mcp-server        # becomes service.name in OTLP / Tempo
+    name: claude-mcp-server        # becomes service.name in OTLP / Tempo / Loki
   ai:
     mcp:
       server:
@@ -47,13 +47,14 @@ spring:
           enabled: true            # discovers @McpTool beans; no manual registration
 
 logging:
-  # Nothing may reach stdout. Boot 4 added a dedicated switch for exactly this:
-  # `logging.console.enabled: false` makes LoggingSystemProperties force
-  # CONSOLE_LOG_THRESHOLD=OFF. A plain boolean, so no YAML 1.1 ambiguity.
-  # The threshold below is the same thing spelled out (and works on 3.4+ too);
-  # it is QUOTED because bare OFF would otherwise resolve to boolean false.
+  # Nothing may reach stdout. Two independent guarantees:
+  #  1. logback-spring.xml declares NO console appender at all.
+  #  2. these properties, which cover Boot's default config.
+  # `logging.console.enabled` is new in Boot 4 and forces CONSOLE_LOG_THRESHOLD
+  # to OFF. It is a plain boolean, so no YAML 1.1 ambiguity; the threshold below
+  # is QUOTED because bare OFF would otherwise resolve to boolean false.
   #
-  # The earlier `logging.pattern.console.threshold` was not a property at all,
+  # The original `logging.pattern.console.threshold` was not a property at all,
   # so console logging stayed ON and every log line was injected straight into
   # the JSON-RPC stream.
   console:
@@ -65,8 +66,6 @@ logging:
     com.xkondix: INFO
     # Telemetry startup lines are logged at INFO; with root=WARN they were
     # invisible, so there was no way to tell whether the exporter had started.
-    # Expect at startup:
-    #   "Publishing metrics for OtlpMeterRegistry every 30s to .../v1/metrics"
     io.micrometer: INFO
     io.opentelemetry: INFO
     # Registration of annotated tools is logged here — the fastest way to
@@ -81,7 +80,7 @@ logging:
 
 # ── Project sandbox ──────────────────────────────────────────────────────────
 # Prefix renamed with the module (was `code-mcp`). Must stay in sync with
-# @ConfigurationProperties(prefix = "claude-mcp") on CodeMcpProperties — a
+# @ConfigurationProperties(prefix = "claude-mcp") on ClaudeMcpProperties — a
 # mismatch binds nothing, logs nothing, and silently falls back to the
 # defaults hardcoded in the record.
 claude-mcp:
@@ -112,17 +111,20 @@ claude-mcp:
     - logs
 
 # ── Observability ────────────────────────────────────────────────────────────
-# Works in STDIO mode: OTLP export is OUTGOING only, so no HTTP server is
-# needed. Every tool call Claude Desktop makes becomes a "mcp_tool <name>" span
-# in Tempo, plus JVM metrics in Prometheus.
+# All three signals work over STDIO because OTLP export is OUTGOING only — no
+# HTTP server is needed. One port, three paths, all on the Grafana LGTM stack:
+#   traces  -> :4318/v1/traces   -> Tempo
+#   metrics -> :4318/v1/metrics  -> Prometheus
+#   logs    -> :4318/v1/logs     -> Loki
 #
 # BOOT 4 PROPERTY MOVE — the reason the old config was dead:
 #   traces  → management.opentelemetry.tracing.export.otlp.endpoint
 #             (Boot 3 spelling was management.otlp.tracing.endpoint)
+#   logs    → management.opentelemetry.logging.export.otlp.endpoint
 #   metrics → management.otlp.metrics.export.url   (Micrometer OtlpMeterRegistry,
 #             a different prefix on purpose — it is a Micrometer registry, not
 #             the OTel SDK)
-# The Boot 3 spellings are NOT kept as a fallback here: an unknown property is
+# The Boot 3 spellings are NOT kept as a fallback: an unknown property is
 # ignored in silence, so "both, whichever wins" only guarantees that a future
 # reader cannot tell which one is live.
 management:
@@ -138,17 +140,23 @@ management:
       export:
         otlp:
           endpoint: http://localhost:4318/v1/traces
+    # Logs: Boot configures the SDK and this exporter, but the Logback bridge
+    # is ours — see logback-spring.xml and OpenTelemetryAppenderInitializer.
+    # Without those two, this endpoint binds and nothing is ever sent.
+    logging:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/logs
   otlp:
     metrics:
       export:
         url: http://localhost:4318/v1/metrics
         step: 30s
 
-# NOTE on the last spans of a session: the default BatchSpanProcessor waits ~5s
-# before flushing, and Claude Desktop kills this subprocess on exit, so the tail
-# of a session can be lost. The former `otel.bsp.*` block did NOT fix that — those
-# keys are read by the OpenTelemetry SDK autoconfigure extension, which is not
-# what Boot uses here, so they were dead config. Tuning it on Boot 4 needs a
-# SpanProcessor / SdkTracerProviderBuilderCustomizer bean; left out until the
-# rest is verified, because losing a few spans at shutdown beats another
-# silently-ignored setting.
+# NOTE on the last signals of a session: the default BatchSpanProcessor waits
+# ~5s before flushing and the metrics step is 30s, while Claude Desktop kills
+# this subprocess on exit — so the tail of a session can be lost. The former
+# `otel.bsp.*` block did NOT fix that: those keys are read by the OpenTelemetry
+# SDK autoconfigure extension, which is not what Boot uses here, so they were
+# dead config. Tuning it on Boot 4 needs a SpanProcessor /
+# SdkTracerProviderBuilderCustomizer bean.

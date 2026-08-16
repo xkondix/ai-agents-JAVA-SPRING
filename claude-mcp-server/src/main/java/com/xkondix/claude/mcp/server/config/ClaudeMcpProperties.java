@@ -36,7 +36,7 @@ import java.util.List;
  * @param ignoredDirs       directories skipped when walking the tree
  */
 @ConfigurationProperties(prefix = "claude-mcp")
-public record CodeMcpProperties(
+public record ClaudeMcpProperties(
 
         @DefaultValue("${user.dir}")
         String projectRoot,

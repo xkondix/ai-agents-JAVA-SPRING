@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Logback configuration for a STDIO MCP server.
+
+    THERE IS NO CONSOLE APPENDER HERE, AND THAT IS THE POINT. stdout carries the
+    JSON-RPC stream; a single log line written there corrupts the protocol and
+    Claude Desktop drops the server with no visible error. application.yml also
+    sets logging.console.enabled=false, but that switch only silences Boot's
+    DEFAULT config. Once a custom logback-spring.xml exists, Boot's default is
+    not used at all — so the guarantee comes from this file simply never
+    declaring a console appender. Belt and braces, two independent mechanisms.
+
+    Boot's own includes are reused so the log format, colours and the
+    trace/span correlation pattern stay identical to the other nine modules:
+      defaults.xml      - conversion rules, LOG_LEVEL_PATTERN (incl. correlation)
+      file-appender.xml - rolling FILE appender driven by ${LOG_FILE}
+    ${LOG_FILE} is set by Boot from logging.file.name, which
+    claude_desktop_config.json overrides with an absolute path.
+-->
+<configuration>
+
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/file-appender.xml"/>
+
+    <!--
+        Bridge from Logback to the OpenTelemetry logging SDK.
+
+        Inert until OpenTelemetryAppender.install(openTelemetry) runs — see
+        OpenTelemetryAppenderInitializer. Boot 4 auto-configures the logging SDK
+        and the OTLP exporter (management.opentelemetry.logging.export.otlp.*)
+        but does NOT wire Logback to it; that last step is ours.
+
+        The appender reads the ACTIVE OTel context when a record is emitted, so
+        every line logged inside a mcp_tool span carries its trace_id and
+        span_id into Loki. That is what makes the jump
+        Grafana panel -> Tempo trace -> Loki logs work.
+    -->
+    <appender name="OTEL"
+              class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender"/>
+
+    <root level="INFO">
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="OTEL"/>
+    </root>
+
+</configuration>
