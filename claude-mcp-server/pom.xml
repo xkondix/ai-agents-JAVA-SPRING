@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- STANDALONE MODULE — deliberately NOT part of ai-agents-JAVA-SPRING.
+         It runs Spring AI 2.0 / Spring Boot 4 while the rest of the project
+         stays on Spring AI 1.1.4 / Boot 3.5. Using spring-boot-starter-parent
+         also gives us -parameters for free, which the custom parent had to
+         configure by hand.
+    <parent>
+        <groupId>com.xkondix</groupId>
+        <artifactId>ai-agents-JAVA-SPRING</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.0</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.xkondix</groupId>
+    <artifactId>claude-mcp-server</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <name>Claude MCP Server - project file access for Claude Desktop</name>
+
+    <properties>
+        <java.version>21</java.version>
+        <spring-ai.version>2.0.0</spring-ai.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- STDIO MCP server. HTTP transport is a separate starter in 2.0
+             (spring-ai-starter-mcp-server-webmvc) — do NOT add it here, an
+             accidental Tomcat would write to stdout and corrupt JSON-RPC. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server</artifactId>
+        </dependency>
+
+        <!-- Declared explicitly even though the MCP starter pulls it in:
+             this is where @McpTool / @McpToolParam live in 2.0
+             (org.springframework.ai.mcp.annotation, moved from the
+             org.springaicommunity incubator). -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-mcp-annotations</artifactId>
+        </dependency>
+
+        <!-- OBSERVABILITY — the reason this module would not start.
+             Spring Boot 4 moved tracing auto-configuration OUT of actuator
+             into dedicated modules. The previous hand-picked set
+             (actuator + micrometer-tracing-bridge-otel + opentelemetry-exporter-otlp
+             + micrometer-registry-otlp) put the Micrometer Tracing API on the
+             classpath but nothing that auto-configures it, so no Tracer bean
+             was ever created and constructor injection failed at startup.
+
+             spring-boot-starter-opentelemetry (new in Boot 4) is the whole
+             package: OpenTelemetry API + SDK auto-configuration,
+             micrometer-tracing-bridge-otel, the OTLP span exporter and
+             micrometer-registry-otlp for metrics. Actuator is NOT needed —
+             there is no HTTP server here to expose endpoints on. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

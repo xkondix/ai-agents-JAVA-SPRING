@@ -1,6 +1,6 @@
-package com.xkondix.codemcp.tools;
+package com.xkondix.claude.mcp.server.tools;
 
-import com.xkondix.codemcp.config.CodeMcpProperties;
+import com.xkondix.claude.mcp.server.config.CodeMcpProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -9,6 +9,14 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.stream.Stream;
 
+/**
+ * File operations for the MCP tools, sandboxed by CodeMcpProperties:
+ * every path is resolved against projectRoot and rejected if it escapes it,
+ * and reads/writes are limited to allowedExtensions.
+ *
+ * CodeMcpProperties is a record, so accessors are projectRoot() /
+ * allowedExtensions() / ignoredDirs() — no get* prefixes.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -17,7 +25,7 @@ public class FileService {
     private final CodeMcpProperties props;
 
     public Path resolveAndValidate(String relativePath) {
-        Path root = Path.of(props.getProjectRoot()).normalize();
+        Path root = Path.of(props.projectRoot()).normalize();
         Path resolved = root.resolve(relativePath).normalize();
         if (!resolved.startsWith(root)) {
             throw new SecurityException("Path traversal detected: " + relativePath);
@@ -27,7 +35,7 @@ public class FileService {
 
     public boolean isAllowedExtension(String path) {
         String lower = path.toLowerCase();
-        return props.getAllowedExtensions().stream().anyMatch(lower::endsWith);
+        return props.allowedExtensions().stream().anyMatch(lower::endsWith);
     }
 
     public String readFile(String relativePath) throws IOException {
@@ -131,7 +139,7 @@ public class FileService {
 
     public String listFiles(String relativePath) throws IOException {
         Path path = (relativePath == null || relativePath.isBlank())
-                ? Path.of(props.getProjectRoot())
+                ? Path.of(props.projectRoot())
                 : resolveAndValidate(relativePath);
         if (!Files.exists(path)) return "ERROR: Directory not found: " + relativePath;
         StringBuilder sb = new StringBuilder("Contents of: ")
@@ -147,13 +155,13 @@ public class FileService {
     }
 
     public String getProjectStructure(int maxDepth) throws IOException {
-        Path root = Path.of(props.getProjectRoot());
+        Path root = Path.of(props.projectRoot());
         StringBuilder sb = new StringBuilder("Project: ")
                 .append(root.getFileName()).append("\n");
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             int depth = 0;
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes a) {
-                if (props.getIgnoredDirs().contains(dir.getFileName().toString()))
+                if (props.ignoredDirs().contains(dir.getFileName().toString()))
                     return FileVisitResult.SKIP_SUBTREE;
                 if (depth > maxDepth) return FileVisitResult.SKIP_SUBTREE;
                 sb.append("  ".repeat(depth)).append("+ ")
@@ -175,12 +183,12 @@ public class FileService {
     }
 
     public String searchInFiles(String query, String extension) throws IOException {
-        Path root = Path.of(props.getProjectRoot());
+        Path root = Path.of(props.projectRoot());
         StringBuilder sb = new StringBuilder("Search: \"").append(query).append("\"\n\n");
         int[] count = {0};
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes a) {
-                if (props.getIgnoredDirs().contains(dir.getFileName().toString()))
+                if (props.ignoredDirs().contains(dir.getFileName().toString()))
                     return FileVisitResult.SKIP_SUBTREE;
                 return FileVisitResult.CONTINUE;
             }
