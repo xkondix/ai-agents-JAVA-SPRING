@@ -1,5 +1,9 @@
 package com.xkondix.claude.mcp.server.tools;
 
+import io.micrometer.core.instrument.DistributionSummary;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import lombok.extern.slf4j.Slf4j;
@@ -36,8 +40,8 @@ import org.springframework.stereotype.Service;
  * a waiting tool call, and blocking the STDIO thread deadlocks the JSON-RPC
  * stream. The human-in-the-loop demo lives in mcp-server (port 8081).
  *
- * OBSERVABILITY: each call is wrapped in a "mcp_tool <name>" span created by
- * hand — there is no agent framework here to instrument, the caller is an
+ * OBSERVABILITY: each call is wrapped by hand in a SERVER-kind span plus three
+ * meters. There is no agent framework here to instrument — the caller is an
  * external client we do not control. It sends no traceparent, so every call
  * forms its own trace (Tempo shows one-span traces with Services: 1; that is
  * correct, not a propagation bug).
@@ -45,6 +49,12 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 public class CodeToolsService {
+
+    private static final String FRAMEWORK = "spring-ai-mcp-server";
+
+    /** Payload directions, mirroring gen_ai_token_type=input|output on the agent panels. */
+    private static final String REQUEST = "request";
+    private static final String RESPONSE = "response";
 
     private final FileService fileService;
 
@@ -70,9 +80,21 @@ public class CodeToolsService {
      */
     private final @Nullable Tracer tracer;
 
-    public CodeToolsService(FileService fileService, ObjectProvider<Tracer> tracerProvider) {
+    /**
+     * Same lesson applied a second time, but resolved differently: a missing
+     * MeterRegistry falls back to a SimpleMeterRegistry rather than to null.
+     * Meters are recorded unconditionally, so a no-op sink removes a null check
+     * from every call path — whereas the span branch stays explicit because
+     * "no tracing" changes the shape of the code, not just its destination.
+     */
+    private final MeterRegistry meterRegistry;
+
+    public CodeToolsService(FileService fileService,
+                            ObjectProvider<Tracer> tracerProvider,
+                            ObjectProvider<MeterRegistry> meterRegistryProvider) {
         this.fileService = fileService;
         this.tracer = tracerProvider.getIfAvailable();
+        this.meterRegistry = meterRegistryProvider.getIfAvailable(SimpleMeterRegistry::new);
         if (this.tracer == null) {
             log.warn("No Tracer bean available — mcp_tool spans are DISABLED, tools still work");
         }
@@ -94,7 +116,7 @@ public class CodeToolsService {
     public String read_file(
             @McpToolParam(description = "Relative path from project root", required = true)
             String path) {
-        return traced("read_file", path, () -> fileService.readFile(path));
+        return traced("read_file", path, len(path), () -> fileService.readFile(path));
     }
 
     @McpTool(name = "list_files",
@@ -105,7 +127,7 @@ public class CodeToolsService {
             @McpToolParam(description = "Relative path to a directory; empty = project root",
                     required = false)
             String path) {
-        return traced("list_files", path, () -> fileService.listFiles(path));
+        return traced("list_files", path, len(path), () -> fileService.listFiles(path));
     }
 
     @McpTool(name = "get_project_structure",
@@ -118,7 +140,7 @@ public class CodeToolsService {
         // Integer, not int: an absent optional argument arrives as null and a
         // primitive would blow up in reflection before the method even runs.
         int depth = (max_depth == null || max_depth <= 0) ? 4 : max_depth;
-        return traced("get_project_structure", "depth=" + depth,
+        return traced("get_project_structure", "depth=" + depth, 0,
                 () -> fileService.getProjectStructure(depth));
     }
 
@@ -133,6 +155,7 @@ public class CodeToolsService {
             String extension) {
         String ext = (extension == null || extension.isBlank()) ? null : extension;
         return traced("search_in_files", "query=" + query + " ext=" + ext,
+                len(query) + len(extension),
                 () -> fileService.searchInFiles(query, ext));
     }
 
@@ -147,7 +170,11 @@ public class CodeToolsService {
             String path,
             @McpToolParam(description = "Full new content of the file", required = true)
             String content) {
-        return traced("write_file", path, () -> fileService.writeFile(path, content));
+        // The whole file body is an ARGUMENT here — the request payload dwarfs
+        // the response ("OK: File written: ..."). This is the one case where
+        // measuring only the response would hide the cost entirely.
+        return traced("write_file", path, len(path) + len(content),
+                () -> fileService.writeFile(path, content));
     }
 
     @McpTool(name = "create_file",
@@ -158,7 +185,8 @@ public class CodeToolsService {
             String path,
             @McpToolParam(description = "Initial file content", required = true)
             String content) {
-        return traced("create_file", path, () -> fileService.createFile(path, content));
+        return traced("create_file", path, len(path) + len(content),
+                () -> fileService.createFile(path, content));
     }
 
     @McpTool(name = "move_file",
@@ -169,6 +197,7 @@ public class CodeToolsService {
             @McpToolParam(description = "Destination relative path", required = true)
             String to_path) {
         return traced("move_file", from_path + " -> " + to_path,
+                len(from_path) + len(to_path),
                 () -> fileService.moveFile(from_path, to_path));
     }
 
@@ -181,6 +210,7 @@ public class CodeToolsService {
             @McpToolParam(description = "Destination relative directory path", required = true)
             String to_path) {
         return traced("move_directory", from_path + " -> " + to_path,
+                len(from_path) + len(to_path),
                 () -> fileService.moveDirectory(from_path, to_path));
     }
 
@@ -198,16 +228,30 @@ public class CodeToolsService {
         if (!"DELETE".equals(confirm)) {
             return "ERROR: confirm field must be exactly: DELETE";
         }
-        return traced("delete_file", path, () -> fileService.deleteFile(path));
+        log.warn("[TOOL] delete_file is irreversible: {}", path);
+        return traced("delete_file", path, len(path) + len(confirm),
+                () -> fileService.deleteFile(path));
     }
 
-    // ── Tracing helper ───────────────────────────────────────────────────
+    // ── Telemetry ────────────────────────────────────────────────────────
+
+    private static int len(@Nullable String value) {
+        return value == null ? 0 : value.length();
+    }
 
     /**
-     * Wraps one tool invocation in a span and ALWAYS returns the operation's
-     * result. Errors come back as an "ERROR: ..." string rather than an
-     * exception: that text is what the model reads, and a readable message is
-     * more useful to it than a protocol-level error it cannot inspect.
+     * Wraps one tool invocation in a span and three meters, and ALWAYS returns
+     * the operation's result. Errors come back as an "ERROR: ..." string rather
+     * than an exception: that text is what the model reads, and a readable
+     * message is more useful to it than a protocol-level error it cannot
+     * inspect.
+     *
+     * SPAN KIND IS SERVER, NOT INTERNAL. This span handles an inbound request,
+     * so SERVER is the semantically correct kind — but it is also load-bearing:
+     * Tempo's metrics generator builds the service graph and the RED metrics
+     * from span kind. As INTERNAL (what tracer.nextSpan() produces by default)
+     * this service never appeared as a node and generated no RED metrics.
+     * Hence spanBuilder() instead of nextSpan().
      *
      * NOTE ON LOG PLACEMENT. The "[TOOL] ..." line is emitted INSIDE the span
      * scope, not before it. When it sat above tracer.withSpan(...) it came out
@@ -222,27 +266,92 @@ public class CodeToolsService {
      * mcp.transport is deliberately NOT tagged here: it is a resource attribute
      * in application.yml, true for the whole service, so repeating it on every
      * span would just cost bytes.
+     *
+     * @param requestChars total characters of the incoming arguments, measured
+     *                     at the call site because the summary string omits
+     *                     file bodies on purpose
      */
-    private String traced(String toolName, String argsSummary, FileOperation operation) {
+    private String traced(String toolName, String argsSummary, int requestChars,
+                          FileOperation operation) {
+        Timer.Sample sample = Timer.start(meterRegistry);
+        String result;
+
         if (tracer == null) {
             log.info("[TOOL] {}: {}", toolName, argsSummary);
-            return execute(toolName, operation);
+            result = execute(toolName, operation);
+        } else {
+            Span span = tracer.spanBuilder()
+                    .name("mcp_tool " + toolName)
+                    .kind(Span.Kind.SERVER)
+                    .tag("gen_ai.operation.name", "execute_tool")
+                    .tag("gen_ai.tool.name", toolName)
+                    .tag("mcp.tool.args", String.valueOf(argsSummary))
+                    .tag("mcp.tool.request.length", String.valueOf(requestChars))
+                    .tag("framework", FRAMEWORK)
+                    .start();
+            try (Tracer.SpanInScope ignored = tracer.withSpan(span)) {
+                log.info("[TOOL] {}: {}", toolName, argsSummary);
+                result = execute(toolName, operation);
+                span.tag("mcp.tool.response.length", String.valueOf(result.length()));
+            } finally {
+                span.end();
+            }
         }
 
-        Span span = tracer.nextSpan().name("mcp_tool " + toolName);
-        span.tag("gen_ai.operation.name", "execute_tool");
-        span.tag("gen_ai.tool.name", toolName);
-        span.tag("mcp.tool.args", String.valueOf(argsSummary));
-        span.tag("framework", "spring-ai-mcp-server");
+        record(toolName, requestChars, result, sample);
+        return result;
+    }
 
-        try (Tracer.SpanInScope ignored = tracer.withSpan(span.start())) {
-            log.info("[TOOL] {}: {}", toolName, argsSummary);
-            String result = execute(toolName, operation);
-            span.tag("mcp.tool.result.length", String.valueOf(result.length()));
-            return result;
-        } finally {
-            span.end();
-        }
+    /**
+     * Three meters, named so they slice by the same `framework` label as the
+     * agent modules and land on the existing Grafana panels.
+     *
+     * OUTCOME IS DERIVED FROM THE RESULT TEXT, not from an exception, because
+     * failures never propagate out of execute() — they are returned to the
+     * model as "ERROR: ...". Deriving it here keeps the error rate honest;
+     * counting only thrown exceptions would report a permanent 0% error rate
+     * while the model reads failures all day.
+     *
+     * PAYLOAD SIZE IS SPLIT BY DIRECTION, not recorded as a single "result
+     * size". The two directions are wildly asymmetric per tool and that
+     * asymmetry is the point: read_file sends a path and returns kilobytes,
+     * while write_file sends the whole file body and returns "OK: File
+     * written". Measuring only the response makes the most expensive call in
+     * the server look free. The tag values mirror gen_ai_token_type=input|output
+     * so the panel reads the same way as the token panels.
+     *
+     * These are CHARACTERS, not tokens. This server has no model and no
+     * tokenizer, and MCP does not report usage back to the server, so the
+     * length of the string is the only honest measure available here. The
+     * token-side cost is visible only in the agent modules.
+     */
+    private void record(String toolName, int requestChars, String result, Timer.Sample sample) {
+        String outcome = result.startsWith("ERROR:") ? "error" : "success";
+
+        sample.stop(Timer.builder("mcp.tool.duration")
+                .description("Duration of an MCP tool invocation")
+                .tag("tool", toolName)
+                .tag("outcome", outcome)
+                .tag("framework", FRAMEWORK)
+                .register(meterRegistry));
+
+        meterRegistry.counter("mcp.tool.calls",
+                "tool", toolName,
+                "outcome", outcome,
+                "framework", FRAMEWORK).increment();
+
+        payloadSize(toolName, REQUEST).record(requestChars);
+        payloadSize(toolName, RESPONSE).record(result.length());
+    }
+
+    private DistributionSummary payloadSize(String toolName, String direction) {
+        return DistributionSummary.builder("mcp.tool.payload.size")
+                .description("Characters exchanged with the model by an MCP tool")
+                .baseUnit("chars")
+                .tag("tool", toolName)
+                .tag("direction", direction)
+                .tag("framework", FRAMEWORK)
+                .register(meterRegistry);
     }
 
     private String execute(String toolName, FileOperation operation) {

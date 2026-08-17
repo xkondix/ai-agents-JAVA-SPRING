@@ -38,6 +38,28 @@
     <appender name="OTEL"
               class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender"/>
 
+    <!--
+        TELEMETRY MUST NOT REPORT ON ITSELF.
+
+        Both of these loggers talk about the export pipeline: OtlpMeterRegistry
+        logs "Failed to publish metrics ... Connection refused" when the LGTM
+        stack is down, and the OTel SDK logs its own exporter failures (Boot
+        bridges JUL to SLF4J, so those land here too).
+
+        With the OTEL appender attached to root, such a line would be queued for
+        export to the very endpoint that just refused the connection. Each
+        failure then produces a log about the failure, which produces another
+        export attempt. additivity="false" keeps these two out of the OTLP path
+        entirely — they go to the file only, which is where you read them anyway
+        while debugging a dead collector.
+    -->
+    <logger name="io.opentelemetry" additivity="false">
+        <appender-ref ref="FILE"/>
+    </logger>
+    <logger name="io.micrometer" additivity="false">
+        <appender-ref ref="FILE"/>
+    </logger>
+
     <root level="INFO">
         <appender-ref ref="FILE"/>
         <appender-ref ref="OTEL"/>
