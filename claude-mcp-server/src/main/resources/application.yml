@@ -1,0 +1,162 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# claude-mcp-server — Spring AI 2.0 / Spring Boot 4, STDIO transport
+#
+# STDIO means stdout IS the JSON-RPC channel. Anything else printed there
+# corrupts the protocol and Claude Desktop drops the server without an error
+# message. Hence: no banner, no web server, no console appender.
+# ─────────────────────────────────────────────────────────────────────────────
+spring:
+  main:
+    # QUOTED ON PURPOSE. YAML 1.1 (SnakeYAML) resolves bare off/on/yes/no as
+    # booleans, so `banner-mode: off` reaches the binder as Boolean false and
+    # has to be coerced into the Banner.Mode enum. Quoting removes the guess.
+    banner-mode: "off"
+    # No embedded server: this module dropped spring-boot-starter-web (STDIO
+    # needs no HTTP). Explicit, so a transitive web dependency can never
+    # accidentally start Tomcat and corrupt the JSON-RPC stream.
+    web-application-type: none
+  application:
+    name: claude-mcp-server        # becomes service.name in OTLP / Tempo / Loki
+  ai:
+    mcp:
+      server:
+        name: ai-agents-claude-server
+        version: 2.0.0
+        instructions: >
+          Read, search and edit files of the ai-agents-JAVA-SPRING project.
+          All paths are relative to the project root.
+        # VERIFIED against McpServerProperties in spring-ai v2.0.0:
+        #   private boolean stdio = false;                       <- default OFF
+        #   private ServerProtocol protocol = STREAMABLE;
+        #   public enum ServerProtocol { SSE, STREAMABLE, STATELESS }
+        #
+        # Two consequences worth remembering:
+        #  1. stdio defaults to FALSE — it must be switched on explicitly.
+        #  2. ServerProtocol has NO STDIO constant, so the previous
+        #     `protocol: STDIO` could never bind. STDIO is not a protocol here,
+        #     it is a transport toggle. `protocol` is therefore left at its
+        #     default and never set in this file.
+        stdio: true
+        type: SYNC
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
+        annotation-scanner:
+          enabled: true            # discovers @McpTool beans; no manual registration
+
+logging:
+  # Nothing may reach stdout. Two independent guarantees:
+  #  1. logback-spring.xml declares NO console appender at all.
+  #  2. these properties, which cover Boot's default config.
+  # `logging.console.enabled` is new in Boot 4 and forces CONSOLE_LOG_THRESHOLD
+  # to OFF. It is a plain boolean, so no YAML 1.1 ambiguity; the threshold below
+  # is QUOTED because bare OFF would otherwise resolve to boolean false.
+  #
+  # The original `logging.pattern.console.threshold` was not a property at all,
+  # so console logging stayed ON and every log line was injected straight into
+  # the JSON-RPC stream.
+  console:
+    enabled: false
+  threshold:
+    console: "OFF"
+  level:
+    root: WARN
+    com.xkondix: INFO
+    # Telemetry startup lines are logged at INFO; with root=WARN they were
+    # invisible, so there was no way to tell whether the exporter had started.
+    io.micrometer: INFO
+    io.opentelemetry: INFO
+    # Registration of annotated tools is logged here — the fastest way to
+    # confirm the scanner found all nine methods.
+    org.springframework.ai.mcp: INFO
+  file:
+    # Relative to the working directory, which Claude Desktop does NOT set to
+    # the project root. Pass an absolute -Dlogging.file.name in
+    # claude_desktop_config.json (see README) — otherwise the log lands
+    # somewhere unexpected, or nowhere.
+    name: logs/claude-mcp-server.log
+
+# ── Project sandbox ──────────────────────────────────────────────────────────
+# Prefix renamed with the module (was `code-mcp`). Must stay in sync with
+# @ConfigurationProperties(prefix = "claude-mcp") on ClaudeMcpProperties — a
+# mismatch binds nothing, logs nothing, and silently falls back to the
+# defaults hardcoded in the record.
+claude-mcp:
+  project-root: C:\Users\konra\Desktop\ai-agents-JAVA-SPRING
+  allowed-extensions:
+    - .java
+    - .xml
+    - .yml
+    - .yaml
+    - .properties
+    - .md
+    - .json
+    - .py
+    - .jsx
+    - .js
+    - .ts
+    - .tsx
+    - .sql
+    - .txt
+    - .imports   # Spring Boot AutoConfiguration.imports (META-INF/spring)
+  ignored-dirs:
+    - .git
+    - target
+    - node_modules
+    - .idea
+    - .mvn
+    - __pycache__
+    - logs
+
+# ── Observability ────────────────────────────────────────────────────────────
+# All three signals work over STDIO because OTLP export is OUTGOING only — no
+# HTTP server is needed. One port, three paths, all on the Grafana LGTM stack:
+#   traces  -> :4318/v1/traces   -> Tempo
+#   metrics -> :4318/v1/metrics  -> Prometheus
+#   logs    -> :4318/v1/logs     -> Loki
+#
+# BOOT 4 PROPERTY MOVE — the reason the old config was dead:
+#   traces  → management.opentelemetry.tracing.export.otlp.endpoint
+#             (Boot 3 spelling was management.otlp.tracing.endpoint)
+#   logs    → management.opentelemetry.logging.export.otlp.endpoint
+#   metrics → management.otlp.metrics.export.url   (Micrometer OtlpMeterRegistry,
+#             a different prefix on purpose — it is a Micrometer registry, not
+#             the OTel SDK)
+# The Boot 3 spellings are NOT kept as a fallback: an unknown property is
+# ignored in silence, so "both, whichever wins" only guarantees that a future
+# reader cannot tell which one is live.
+management:
+  tracing:
+    enabled: true
+    sampling:
+      probability: 1.0             # demo/dev: keep every trace
+  opentelemetry:
+    resource-attributes:
+      deployment.environment: local
+      mcp.transport: stdio
+    tracing:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+    # Logs: Boot configures the SDK and this exporter, but the Logback bridge
+    # is ours — see logback-spring.xml and OpenTelemetryAppenderInitializer.
+    # Without those two, this endpoint binds and nothing is ever sent.
+    logging:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/logs
+  otlp:
+    metrics:
+      export:
+        url: http://localhost:4318/v1/metrics
+        step: 30s
+
+# NOTE on the last signals of a session: the default BatchSpanProcessor waits
+# ~5s before flushing and the metrics step is 30s, while Claude Desktop kills
+# this subprocess on exit — so the tail of a session can be lost. The former
+# `otel.bsp.*` block did NOT fix that: those keys are read by the OpenTelemetry
+# SDK autoconfigure extension, which is not what Boot uses here, so they were
+# dead config. Tuning it on Boot 4 needs a SpanProcessor /
+# SdkTracerProviderBuilderCustomizer bean.

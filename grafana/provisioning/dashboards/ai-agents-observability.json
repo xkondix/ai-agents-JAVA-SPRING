@@ -92,7 +92,7 @@
     {
       "type": "timeseries",
       "title": "Tool executions (Spring AI): rate & avg duration",
-      "description": "Source: spring_ai_tool_milliseconds \u2014 emitted only by Spring AI modules. raw-agent has tool_call SPANS (Tempo) but no tool metric; LC4j has gen_ai_client_tool_requests (model-requested tool calls). To split per tool, inspect the label set in Prometheus and add it to by().",
+      "description": "Source: spring_ai_tool_milliseconds \u2014 emitted only by Spring AI modules. raw-agent has tool_call SPANS (Tempo) but no tool metric; LC4j has gen_ai_client_tool_requests (model-requested tool calls). claude-mcp-server is absent here too: it has no agent loop, so it emits its own mcp_tool_* meters \u2014 see the MCP row below. To split per tool, inspect the label set in Prometheus and add it to by().",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [
@@ -111,13 +111,83 @@
         }
       ]
     },
-    { "type": "row", "title": "Reliability \u2014 HTTP", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 }, "collapsed": false },
+    { "type": "row", "title": "MCP \u2014 claude-mcp-server (STDIO)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 }, "collapsed": false },
+    {
+      "type": "timeseries",
+      "title": "MCP tool calls/min by tool",
+      "description": "Hand-written meters from CodeToolsService. This module has no agent loop, so Spring AI emits nothing for it \u2014 every increment is one tool call made by an MCP client over STDIO. No job filter: mcp_tool_* comes from claude-mcp-server only. Add job to by() if a second module ever emits these.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tool) (rate(mcp_tool_calls_total[$__rate_interval])) * 60",
+          "legendFormat": "{{tool}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "MCP tool duration by tool (avg & p95)",
+      "description": "Micrometer OTLP exports timers in milliseconds \u2014 same suffix as gen_ai_client_operation_milliseconds \u2014 converted to seconds here. search_in_files walks the whole tree and should stand out; read_file is sub-millisecond. If the p95 series stays empty the timer has no histogram buckets: add .publishPercentileHistogram() to the mcp.tool.duration builder, or read the avg series only.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 10, "x": 8, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum by (tool) (rate(mcp_tool_duration_milliseconds_sum[$__rate_interval])) / sum by (tool) (rate(mcp_tool_duration_milliseconds_count[$__rate_interval]))) / 1000",
+          "legendFormat": "avg {{tool}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, tool) (rate(mcp_tool_duration_milliseconds_bucket[$__rate_interval]))) / 1000",
+          "legendFormat": "p95 {{tool}}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Failed tool calls (dashboard range)",
+      "description": "Failed tool calls over the dashboard range. outcome is derived from the 'ERROR:' prefix of the returned text, NOT from thrown exceptions \u2014 this server answers the model with error strings so nothing propagates, and counting exceptions would show a permanent zero while the model reads failures all day. Empty panel = no failures.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tool) (increase(mcp_tool_calls_total{outcome=\"error\"}[$__range]))",
+          "legendFormat": "{{tool}}",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Context returned to the model (avg chars per call)",
+      "description": "CHARACTERS, NOT TOKENS. This server never sees token counts \u2014 it has no model and no tokenizer, and MCP does not report usage back to the server \u2014 so the only honest measure is the length of the string handed to the client (roughly 3-4 chars per token for code, as an order of magnitude only). It is still the real cost of an MCP call and is invisible in latency: get_project_structure and search_in_files are the expensive ones. Pair it with gen_ai_client_token_usage from the agent modules for the full picture. If empty, check whether Prometheus names the series mcp_tool_result_size_sum WITHOUT the _chars suffix.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "custom": { "drawStyle": "bars", "fillOpacity": 40 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tool) (rate(mcp_tool_result_size_chars_sum[$__rate_interval])) / sum by (tool) (rate(mcp_tool_result_size_chars_count[$__rate_interval]))",
+          "legendFormat": "{{tool}}"
+        }
+      ]
+    },
+    { "type": "row", "title": "Reliability \u2014 HTTP", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 }, "collapsed": false },
     {
       "type": "timeseries",
       "title": "Requests/min by service & endpoint",
       "description": "Actuator endpoints are excluded at the source by the shared ObservationPredicate (module: common).",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         {
@@ -132,7 +202,7 @@
       "title": "HTTP 4xx/5xx per min",
       "description": "Empty flat zero = zero errors (the query filters status 4xx/5xx).",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
       "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "custom": { "fillOpacity": 10 }, "color": { "mode": "palette-classic" } }, "overrides": [] },
       "targets": [
         {
@@ -142,12 +212,12 @@
         }
       ]
     },
-    { "type": "row", "title": "JVM", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 }, "collapsed": false },
+    { "type": "row", "title": "JVM", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 }, "collapsed": false },
     {
       "type": "timeseries",
       "title": "Heap used by service",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
       "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         {
@@ -162,7 +232,7 @@
       "title": "Live threads by service",
       "description": "Watch mcp-server during a pending approval \u2014 virtual threads keep this flat while a request blocks.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 45 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         {
