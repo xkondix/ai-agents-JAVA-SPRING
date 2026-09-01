@@ -13,6 +13,20 @@ spring:
       port: 6379
 
 # ── Observability ─────────────────────────────────────────────────────────
+# Three signals, one port. Boot 4 property layout:
+#   traces  : management.opentelemetry.tracing.export.otlp.endpoint
+#             (Boot 3 spelling was management.otlp.tracing.endpoint — DEAD)
+#   logs    : management.opentelemetry.logging.export.otlp.endpoint
+#   metrics : management.otlp.metrics.export.url  (Micrometer OtlpMeterRegistry,
+#             not the OTel SDK — hence the deliberately different prefix)
+#
+# Logs additionally need the Logback->OTel bridge from `common`
+# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration) plus actuator on
+# the classpath. Miss either and Loki stays empty with no error anywhere.
+#
+# Getting the tracing endpoint wrong here loses more than the LLM spans: it
+# also loses the tool_call spans that TracingToolProvider adds, which exist
+# only because LangChain4j has no Micrometer integration of its own.
 management:
   endpoints:
     web:
@@ -21,9 +35,16 @@ management:
   tracing:
     sampling:
       probability: 1.0
-  otlp:
+  opentelemetry:
     tracing:
-      endpoint: http://localhost:4318/v1/traces
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+    logging:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/logs
+  otlp:
     metrics:
       export:
         url: http://localhost:4318/v1/metrics
@@ -57,7 +78,9 @@ langchain4j:
 ---
 # ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
 # API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
-# LangChain4j needs the /v1 suffix in base-url (unlike Spring AI).
+# LangChain4j needs the /v1 suffix in base-url. Since Spring AI 2.0 moved to
+# the official OpenAI SDK and dropped completions-path, the Spring AI modules
+# now need it too — so all seven modules finally agree on this URL.
 spring:
   config:
     activate:

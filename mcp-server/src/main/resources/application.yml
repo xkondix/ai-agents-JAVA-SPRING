@@ -9,11 +9,50 @@ spring:
       server:
         name: ai-sandbox-mcp-server
         version: 1.0.0
-        # SYNC_HTTP_SSE — HTTP transport for LangChain4j and Spring AI MCP clients
-        transport: SYNC_HTTP_SSE
+        # ── TRANSPORT: STREAMABLE HTTP (the Spring AI 2.0 default) ────────
+        #
+        # History of this one line, because it is instructive:
+        #   1.x  `transport: SYNC_HTTP_SSE` — a property that DOES NOT EXIST.
+        #        It bound to nothing and was ignored in silence; SSE worked
+        #        only because the webmvc starter provided it by default.
+        #   2.0  the real property is `protocol`, an enum with SSE /
+        #        STREAMABLE / STATELESS, defaulting to STREAMABLE.
+        #
+        # We first pinned `protocol: SSE` to preserve the old behaviour, and
+        # /sse still did not answer. Rather than keep fighting a transport
+        # that Spring AI marks @Deprecated(since = "2.0.0", forRemoval = true)
+        # — McpServerSseProperties carries that annotation on the whole class —
+        # this server now speaks the protocol 2.0 actually supports.
+        #
+        # Endpoints, verified in McpServerStreamableHttpProperties:
+        #   prefix        spring.ai.mcp.server.streamable-http
+        #   mcp-endpoint  /mcp            (single endpoint, both directions)
+        # versus the old SSE pair: GET /sse + POST /mcp/message.
+        #
+        # BOTH CLIENTS MUST MOVE TOGETHER. A transport mismatch is not a
+        # graceful failure here: both agents initialise their MCP client
+        # eagerly at context startup, so the wrong transport does not degrade
+        # them — it stops them from starting at all.
+        protocol: STREAMABLE
+        streamable-http:
+          mcp-endpoint: /mcp   # explicit; this is also the default
   jackson:
-    serialization:
-      write-dates-as-timestamps: false
+    # JACKSON 3 MOVED DATE/TIME FLAGS OUT OF SerializationFeature.
+    # This was `spring.jackson.serialization.write-dates-as-timestamps` and it
+    # failed binding at startup:
+    #   "No enum constant tools.jackson.databind.SerializationFeature
+    #    .write-dates-as-timestamps"
+    # In Jackson 3 the flag lives in tools.jackson.databind.cfg.DateTimeFeature,
+    # which Boot exposes under spring.jackson.datatype.datetime.*
+    #
+    # Worth noting the flag is now REDUNDANT: WRITE_DATES_AS_TIMESTAMPS
+    # defaults to true in Jackson 2 and to false in Jackson 3, so the desired
+    # behaviour (ISO-8601 strings, not epoch numbers) is the new default.
+    # Kept explicit because this is a demo project and the intent should be
+    # readable, not inferred from a framework default.
+    datatype:
+      datetime:
+        write-dates-as-timestamps: false
   # Virtual Threads (Java 21) — each request gets its own virtual thread.
   # Lets requestApproval() block on future.get() without exhausting the Tomcat
   # thread pool, so approve/reject REST calls are handled concurrently while a
@@ -23,22 +62,41 @@ spring:
       enabled: true
 
 # ── Observability ─────────────────────────────────────────────────────────
-# Tracing ENABLED — without it, MCP tool executions on this server produce
-# no spans at all, so agent traces in Tempo end at the HTTP client call.
-# If Grafana LGTM is down you will see "connection refused :4318" warnings;
-# either start it (docker compose up lgtm -d) or set tracing.enabled: false.
+# Three signals, one port. Boot 4 property layout:
+#   traces  : management.opentelemetry.tracing.export.otlp.endpoint
+#             (Boot 3 spelling was management.otlp.tracing.endpoint — DEAD)
+#   logs    : management.opentelemetry.logging.export.otlp.endpoint
+#   metrics : management.otlp.metrics.export.url  (Micrometer OtlpMeterRegistry,
+#             not the OTel SDK — hence the deliberately different prefix)
+#
+# Logs additionally need the Logback->OTel bridge, which lives in `common`
+# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration) and reaches every
+# module transitively. Actuator must stay on the classpath for the OTLP
+# logging auto-configuration to switch on at all.
+#
+# This module is the RECEIVING end of the distributed trace, so a wrong tracing
+# endpoint here is especially misleading: its spans are created and correctly
+# parented to the incoming traceparent, but never exported — the agent trace
+# looks like it stops at the HTTP call while both sides work fine.
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus,metrics
+        include: health,info,prometheus,metrics,mappings
   tracing:
     enabled: true
     sampling:
       probability: 1.0
-  otlp:
+  opentelemetry:
     tracing:
-      endpoint: http://localhost:4318/v1/traces
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+    logging:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/logs
+  otlp:
     metrics:
       export:
         url: http://localhost:4318/v1/metrics
@@ -47,3 +105,6 @@ logging:
   level:
     com.xkondix: DEBUG
     io.modelcontextprotocol: INFO
+    # Transport registration is logged here. If /mcp ever 404s again, this is
+    # the first place to look — it shows which transport provider bean won.
+    org.springframework.ai.mcp.server: INFO

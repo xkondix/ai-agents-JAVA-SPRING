@@ -11,6 +11,24 @@ spring:
     default: openrouter
 
 # ── Observability ─────────────────────────────────────────────────────────
+# Three signals, one port. Boot 4 property layout:
+#   traces  : management.opentelemetry.tracing.export.otlp.endpoint
+#             (Boot 3 spelling was management.otlp.tracing.endpoint — DEAD)
+#   logs    : management.opentelemetry.logging.export.otlp.endpoint
+#   metrics : management.otlp.metrics.export.url  (Micrometer OtlpMeterRegistry,
+#             not the OTel SDK — hence the deliberately different prefix)
+#
+# Logs additionally need the Logback->OTel bridge from `common`
+# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration) plus actuator on
+# the classpath; without either, Loki stays empty and nothing is logged
+# about it.
+#
+# The tracing symptom is especially confusing in THIS module, because it builds
+# its spans BY HAND: trace and span ids still appear in every log line
+# (Micrometer puts them in the MDC), the ids still nest correctly, metrics
+# still reach Prometheus — and Tempo answers "failed to get trace with id ...:
+# Not Found", because nothing was ever exported. Working instrumentation, no
+# exporter.
 management:
   endpoints:
     web:
@@ -19,9 +37,16 @@ management:
   tracing:
     sampling:
       probability: 1.0
-  otlp:
+  opentelemetry:
     tracing:
-      endpoint: http://localhost:4318/v1/traces
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+    logging:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/logs
+  otlp:
     metrics:
       export:
         url: http://localhost:4318/v1/metrics

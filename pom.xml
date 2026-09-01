@@ -8,6 +8,10 @@
     <!-- ================================================================ -->
     <!--  PARENT POM — ai-agents-JAVA-SPRING                              -->
     <!--  Konrad Kowalczyk  |  xkondix                                    -->
+    <!--                                                                  -->
+    <!--  MIGRATION: Spring Boot 3.5.0 -> 4.0.4, Spring AI 1.1.4 -> 2.0.0 -->
+    <!--  claude-mcp-server was the pilot (standalone, outside the         -->
+    <!--  reactor); the same version set is confirmed working there.       -->
     <!-- ================================================================ -->
 
     <groupId>com.xkondix</groupId>
@@ -24,7 +28,7 @@
     <modules>
         <module>common</module>
         <module>mcp-server</module>
-<!--        <module>code-mcp-server</module>-->
+<!--        <module>claude-mcp-server</module>  standalone: own parent, on Boot 4 from the start -->
         <module>raw-agent</module>
         <module>langchain4j-agent-local</module>
         <module>langchain4j-agent-mcp</module>
@@ -38,25 +42,81 @@
         <java.version>21</java.version>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <spring-boot.version>3.5.0</spring-boot.version>
-        <!-- LangChain4j — latest stable -->
-        <langchain4j.version>1.16.3</langchain4j.version>
+
         <!--
-            Spring AI — latest stable 1.x.
-            IMPORTANT: Spring AI BOM manages MCP SDK version internally (0.14.x).
-            Do NOT add a separate mcp-bom — it will override the version and
-            cause ClassNotFoundException for McpJsonMapper / McpServer classes.
-            Spring AI 2.0.0 requires Spring Boot 4 + Jackson 3 — do NOT upgrade yet.
+            Spring Boot 4.0.4 (was 3.5.0).
+            The Java baseline stays at 17, so Java 21 remains fine.
+            4.0.4 rather than 4.0.0 because of two actuator advisories
+            (GHSA-8hfc-fq58-r658, GHSA-mgvc-8q2h-5pgc).
         -->
-        <spring-ai.version>1.1.4</spring-ai.version>
+        <spring-boot.version>4.0.4</spring-boot.version>
+
+        <!--
+            LangChain4j — BOM version UNCHANGED.
+            LC4j does not need a version bump, but it DOES need different
+            ARTIFACTS: the Spring Boot starters ship as two parallel families
+            at the same version, told apart only by artifactId:
+              langchain4j-*-spring-boot-starter   -> Spring Boot 3.5+
+              langchain4j-*-spring-boot4-starter  -> Spring Boot 4.0+
+            Both are managed by this same langchain4j-bom 1.16.3 (property
+            langchain4j.beta.version = 1.16.3-beta26), so the modules only
+            swap artifactId — no version to add anywhere.
+
+            Non-starter artifacts (langchain4j, langchain4j-core,
+            langchain4j-mcp, langchain4j-agentic) are independent of the Boot
+            version and stay as they are.
+        -->
+        <langchain4j.version>1.16.3</langchain4j.version>
+
+        <!--
+            Spring AI 2.0.0 (was 1.1.4).
+            Requires Spring Boot 4 + Spring Framework 7. Jackson 3 is the
+            default in Boot 4, but Jackson 2 remains MANAGED (see below), so
+            it is not a hard blocker.
+
+            NOTE: the Spring AI BOM also manages the MCP SDK version. Do NOT
+            add a separate mcp-bom — it overrides that version and causes
+            ClassNotFoundException.
+
+            Renamed in 2.0: spring-ai-advisors-vector-store is now
+            spring-ai-vector-store-advisor.
+        -->
+        <spring-ai.version>2.0.0</spring-ai.version>
+
         <lombok.version>1.18.34</lombok.version>
-        <springdoc.version>2.8.9</springdoc.version>
+
+        <!--
+            springdoc 3.x is the Boot 4 line (2.x targets Boot 3).
+            3.0.x targets Boot 4.0; 3.1.0 is built against Boot 4.1.0.
+            TO VERIFY on the first build: if 3.0.3 fails to start, check the
+            current 3.0 line on springdoc.org.
+        -->
+        <springdoc.version>3.0.3</springdoc.version>
+
+        <!--
+            Boot manages io.opentelemetry:opentelemetry-bom (1.55.0) but NOT
+            the io.opentelemetry.instrumentation group, so the Logback appender
+            needs an explicit version. Instrumentation 2.21.0 targets OTel SDK
+            1.55.0 — re-check that pairing when bumping Boot.
+            Same value is pinned independently in claude-mcp-server, which has
+            its own parent.
+        -->
+        <otel-instrumentation.version>2.21.0-alpha</otel-instrumentation.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
 
-            <!-- Spring Boot BOM -->
+            <!--
+                Spring Boot BOM.
+                Manages BOTH Jacksons in parallel:
+                  com.fasterxml.jackson:jackson-bom   (Jackson 2)
+                  tools.jackson:jackson-bom           (Jackson 3)
+                So existing code on com.fasterxml.jackson.databind
+                (RawToolExecutor, LlmClient, DemoTools, ToolDefinition) still
+                compiles without declaring a version. What DOES change is what
+                Spring MVC serialises responses with — Jackson 3 by default.
+            -->
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
@@ -65,7 +125,7 @@
                 <scope>import</scope>
             </dependency>
 
-            <!-- LangChain4j BOM -->
+            <!-- LangChain4j BOM — manages both starter families -->
             <dependency>
                 <groupId>dev.langchain4j</groupId>
                 <artifactId>langchain4j-bom</artifactId>
@@ -74,11 +134,7 @@
                 <scope>import</scope>
             </dependency>
 
-            <!--
-                Spring AI BOM — also manages MCP SDK version.
-                Spring AI 1.1.4 uses MCP SDK 0.14.x internally.
-                Do NOT add mcp-bom separately — version conflict!
-            -->
+            <!-- Spring AI BOM — also manages the MCP SDK version -->
             <dependency>
                 <groupId>org.springframework.ai</groupId>
                 <artifactId>spring-ai-bom</artifactId>
@@ -109,6 +165,14 @@
                 <version>${springdoc.version}</version>
             </dependency>
 
+            <!-- Logback -> OpenTelemetry logs bridge. Declared here, consumed
+                 by `common` so every module inherits it transitively. -->
+            <dependency>
+                <groupId>io.opentelemetry.instrumentation</groupId>
+                <artifactId>opentelemetry-logback-appender-1.0</artifactId>
+                <version>${otel-instrumentation.version}</version>
+            </dependency>
+
         </dependencies>
     </dependencyManagement>
 
@@ -125,29 +189,46 @@
         </dependency>
 
         <!-- ── Observability — shared by ALL modules ──────────────────── -->
-        <!-- Traces: Micrometer Observations -> OTel spans -> OTLP push -->
+        <!--
+            BOOT 4 RESTRUCTURED THIS LAYER. The previous hand-picked set
+            (micrometer-tracing-bridge-otel + opentelemetry-exporter-otlp
+            + micrometer-registry-otlp) put the API on the classpath, but in
+            Boot 4 tracing auto-configuration moved OUT of actuator into
+            dedicated modules — so nothing configured that API and the Tracer
+            bean was never created. Symptom: the context fails to start as soon
+            as a Tracer is injected through a constructor.
+
+            spring-boot-starter-opentelemetry (new in Boot 4) is the whole
+            package: OpenTelemetry API + SDK auto-configuration,
+            micrometer-tracing-bridge-otel, the OTLP exporters for traces and
+            logs, and micrometer-registry-otlp. That is why the three previous
+            dependencies are gone — they are inside it.
+
+            ACTUATOR STAYS and is declared per module. It is not only about
+            endpoints: ConditionalOnEnabledLoggingExport, from
+            spring-boot-actuator-autoconfigure, is the FIRST condition of
+            OtlpLoggingAutoConfiguration. Without actuator, LOG export silently
+            backs off while traces and metrics keep working.
+
+            The Logback->OTel bridge itself lives in `common` (dependency,
+            logback-spring.xml and the installer auto-configuration), so all
+            nine modules get logs in Loki from one place.
+        -->
         <dependency>
-            <groupId>io.micrometer</groupId>
-            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
         </dependency>
-        <dependency>
-            <groupId>io.opentelemetry</groupId>
-            <artifactId>opentelemetry-exporter-otlp</artifactId>
-        </dependency>
-        <!-- Metrics, pull model: /actuator/prometheus scrape endpoint -->
+
+        <!--
+            Metrics, pull model: the /actuator/prometheus endpoint.
+            Kept because the OpenTelemetry starter brings the OTLP registry
+            (push), not the Prometheus one (pull). Both run side by side — the
+            project dashboards read what is pushed over OTLP to LGTM, but a
+            scrape endpoint is handy for local debugging.
+        -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
-        </dependency>
-        <!-- Metrics, push model: activates management.otlp.metrics.export.*
-             Without this registry the OTLP metrics url in application.yml is
-             silently ignored and the LGTM Prometheus receives NO app metrics
-             (it does not scrape host apps — it only stores what arrives
-             over OTLP). Traces worked without it because the trace exporter
-             is a separate artifact (opentelemetry-exporter-otlp above). -->
-        <dependency>
-            <groupId>io.micrometer</groupId>
-            <artifactId>micrometer-registry-otlp</artifactId>
         </dependency>
     </dependencies>
 
@@ -177,7 +258,15 @@
                              spring-boot-starter-parent sets this for you; a custom
                              parent must do it explicitly. Without it, @RequestParam /
                              @PathVariable without an explicit name fail at runtime:
-                             "Name for argument of type [int] not specified..." -->
+                             "Name for argument of type [int] not specified..."
+
+                             After the Spring AI 2.0 migration this flag has a
+                             SECOND, more important role: @McpToolParam has no
+                             `name` attribute, so parameter names in the generated
+                             MCP tool JSON schema come from reflection metadata
+                             only. Without it the schema publishes arg0/arg1 and
+                             every argument arrives as null — with no error in the
+                             log. -->
                         <parameters>true</parameters>
                         <annotationProcessorPaths>
                             <path>

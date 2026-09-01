@@ -28,17 +28,58 @@ spring:
       client:
         enabled: true
         type: SYNC
-        # Connections must live under a TRANSPORT key (sse / streamable-http).
-        sse:
+        # ── TRANSPORT: STREAMABLE HTTP ────────────────────────────────────
+        # Connections live under a TRANSPORT key, and that key must match the
+        # server. mcp-server (8081) now runs protocol: STREAMABLE, so this
+        # moved from `sse:` to `streamable-http:`.
+        #
+        # Shape verified in McpStreamableHttpClientProperties:
+        #   prefix  spring.ai.mcp.client.streamable-http
+        #   record ConnectionParameters(String url, String endpoint)
+        # `url` is the base URL only; `endpoint` defaults to /mcp and is
+        # written out here so the pairing with the server side is visible.
+        #
+        # A MISMATCH IS FATAL, NOT DEGRADED. McpClientAutoConfiguration calls
+        # McpSyncClient.initialize() while building the bean, so a wrong
+        # transport does not mean "agent without tools" — it means the context
+        # never starts. Two different failure modes seen while migrating:
+        #   server down      -> ConnectException, fails fast
+        #   wrong transport  -> the handshake hangs and dies after 20 s with
+        #                       "Did not observe any item or terminal signal"
+        # The second one reads like a network problem and is not.
+        #
+        # STARTUP ORDER: mcp-server must be running BEFORE this module.
+        streamable-http:
           connections:
             java-mcp-server:
-              url: http://localhost:8081   # base URL only; /sse endpoint is the default
-            # code-mcp-server runs in STDIO mode by default (Claude Desktop).
-            # Enable ONLY when it runs with transport=SYNC_HTTP_SSE:
-            # code-mcp-server:
-            #   url: http://localhost:8086
+              url: http://localhost:8081
+              endpoint: /mcp
+        # claude-mcp-server runs in STDIO mode, dedicated to Claude Desktop,
+        # so it is not reachable over HTTP and is not listed here.
 
 # ── Observability ─────────────────────────────────────────────────────────
+# SPRING BOOT 4 MOVED THE EXPORT PROPERTIES. All three signals, one port:
+#   traces  : management.opentelemetry.tracing.export.otlp.endpoint
+#             (Boot 3 spelling was management.otlp.tracing.endpoint — DEAD)
+#   logs    : management.opentelemetry.logging.export.otlp.endpoint
+#   metrics : management.otlp.metrics.export.url  (unchanged — that one belongs
+#             to the Micrometer OtlpMeterRegistry, not the OTel SDK, hence the
+#             deliberately different prefix)
+#
+# The LOGS line needs three things that Boot does NOT give you:
+#   1. spring-boot-starter-actuator on the classpath — its
+#      ConditionalOnEnabledLoggingExport is the FIRST condition of
+#      OtlpLoggingAutoConfiguration, so without it log export silently backs
+#      off while traces and metrics keep working
+#   2. the Logback appender + install() call — both live in `common`
+#      (logback-spring.xml + OtelLoggingBridgeAutoConfiguration)
+#   3. this endpoint
+# Miss any one of them and Loki stays empty with no error anywhere.
+#
+# This module is where the agent and mcp-server traces are joined into ONE
+# distributed trace, so getting the tracing endpoint wrong hurts most here:
+# spans would still be created and correlated in-process but never exported,
+# and the propagation demo would look broken while the code is fine.
 management:
   endpoints:
     web:
@@ -47,9 +88,16 @@ management:
   tracing:
     sampling:
       probability: 1.0
-  otlp:
+  opentelemetry:
     tracing:
-      endpoint: http://localhost:4318/v1/traces
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+    logging:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/logs
+  otlp:
     metrics:
       export:
         url: http://localhost:4318/v1/metrics
@@ -79,8 +127,19 @@ spring:
 ---
 # ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
 # API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
-# Spring AI appends /v1/chat/completions itself — base-url WITHOUT /v1
-# (unlike LangChain4j and raw-agent).
+#
+# BASE-URL NOW INCLUDES /v1 — CHANGED IN SPRING AI 2.0.
+# The OpenAI model was rewritten on top of the official OpenAI Java SDK
+# (com.openai:openai-java-core), replacing the RestClient implementation:
+#
+#   Spring AI 1.x : base-url + completions-path
+#                   https://openrouter.ai/api  +  /v1/chat/completions
+#   Spring AI 2.0 : base-url handed to the SDK, which appends
+#                   /chat/completions itself
+#
+# completions-path no longer exists as a property, so /v1 belongs in base-url.
+# This module now matches LangChain4j and raw-agent instead of differing from
+# them — the old comment claiming otherwise was true for 1.x only.
 spring:
   config:
     activate:
@@ -89,9 +148,13 @@ spring:
     model:
       chat: openai   # activates only the OpenAI chat autoconfiguration
     openai:
-      base-url: https://openrouter.ai/api
+      base-url: https://openrouter.ai/api/v1
       api-key: ${OPENROUTER_API_KEY}
       chat:
         options:
+          # The .options infix SURVIVED for chat in 2.0 (OpenAiChatProperties
+          # still nests an Options object under spring.ai.openai.chat).
+          # It was flattened only for embedding, image, audio, moderation
+          # and OCR — do not "fix" those by analogy with this block.
           model: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
           temperature: 0.3

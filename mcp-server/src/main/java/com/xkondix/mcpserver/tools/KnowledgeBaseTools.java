@@ -3,9 +3,10 @@ package com.xkondix.mcpserver.tools;
 import com.xkondix.mcpserver.approval.ApprovalService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.tool.annotation.Tool;
-import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.ai.mcp.annotation.McpTool;
+import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
+
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,7 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * In-memory storage — data is lost on restart.
  * For production: replace with Redis or a database.
  *
- * Spring AI @Tool approach — JSON Schema generated automatically.
+ * SPRING AI 2.0 — @McpTool, NOT @Tool. See GameStatsTools for why the two
+ * annotations now mean different things.
  *
  * Demonstrates the Human-in-the-loop Approval Flow:
  *   - save_note   : requires approval before writing
@@ -26,10 +28,21 @@ import java.util.concurrent.ConcurrentHashMap;
  * tool has no if/else boilerplate and CANNOT execute the action without a
  * decision — the shape of the API enforces the rule.
  *
- * This works here because mcp-server runs over HTTP (SYNC_HTTP_SSE), so the
- * Approval REST API on :8081 is reachable and approve/reject can unblock the
- * waiting tool call. (The STDIO-based code-mcp-server cannot do this — see its
- * README.)
+ * THE APPROVAL FLOW IS WHY THIS SERVER SPEAKS HTTP.
+ * gate(...) blocks the calling thread until a human decides, and that decision
+ * arrives over a SECOND channel: the Approval REST API on :8081, driven from
+ * the UI on :3000. Over STDIO there is no second channel — the single stdin/
+ * stdout pipe is already carrying JSON-RPC, and blocking its thread deadlocks
+ * the stream outright. That is the whole reason claude-mcp-server has no
+ * approval flow, and the contrast between the two transports is the lesson.
+ *
+ * Blocking here is safe because spring.threads.virtual.enabled=true: each
+ * request runs on a virtual thread, so pending approvals park cheaply instead
+ * of exhausting a platform-thread pool.
+ *
+ * The destructiveHint below is not decoration — MCP clients use those hints to
+ * decide which calls to surface for confirmation, which is exactly the same
+ * intent the approval gate enforces server-side.
  */
 @Slf4j
 @Service
@@ -41,15 +54,17 @@ public class KnowledgeBaseTools {
     // In-memory store — mock for demo purposes
     private final Map<String, String> notes = new ConcurrentHashMap<>();
 
-    @Tool(description = """
+    @McpTool(name = "save_note", description = """
             REQUIRES HUMAN APPROVAL.
             Save a note to the knowledge base.
             The operation pauses until approved at http://localhost:3000/approvals
             Returns the generated note ID, or REJECTED if cancelled.
             """)
     public String save_note(
-            @ToolParam(description = "Note title") String title,
-            @ToolParam(description = "Note content") String content) {
+            @McpToolParam(description = "Note title", required = true)
+            String title,
+            @McpToolParam(description = "Note content", required = true)
+            String content) {
         log.info("[MCP] save_note PENDING APPROVAL title={}", title);
 
         return approvalService.gate(
@@ -65,14 +80,16 @@ public class KnowledgeBaseTools {
                 "REJECTED: Note was not saved.");
     }
 
-    @Tool(description = """
+    @McpTool(name = "delete_note", description = """
             REQUIRES HUMAN APPROVAL.
             Delete a note from the knowledge base by its ID.
             The operation pauses until approved at http://localhost:3000/approvals
             Returns confirmation, or REJECTED if cancelled.
-            """)
+            """,
+            annotations = @McpTool.McpAnnotations(destructiveHint = true))
     public String delete_note(
-            @ToolParam(description = "Note ID to delete") String id) {
+            @McpToolParam(description = "Note ID to delete", required = true)
+            String id) {
         log.info("[MCP] delete_note PENDING APPROVAL id={}", id);
 
         if (!notes.containsKey(id)) {
@@ -91,13 +108,15 @@ public class KnowledgeBaseTools {
                 "REJECTED: Note was not deleted.");
     }
 
-    @Tool(description = """
+    @McpTool(name = "search_notes", description = """
             Search notes in the knowledge base by keyword (case-insensitive).
             Safe operation — no approval required.
             Returns matching notes with their IDs.
-            """)
+            """,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true))
     public String search_notes(
-            @ToolParam(description = "Search keyword") String query) {
+            @McpToolParam(description = "Search keyword", required = true)
+            String query) {
         log.info("[MCP] search_notes query={}", query);
         String result = notes.entrySet().stream()
                 .filter(e -> e.getValue().toLowerCase().contains(query.toLowerCase()))

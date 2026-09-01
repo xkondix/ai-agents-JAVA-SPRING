@@ -47,9 +47,18 @@
             <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
 
+        <!-- RENAMED IN SPRING AI 2.0.
+             Was: spring-ai-advisors-vector-store
+             Now: spring-ai-vector-store-advisor
+             The module was renamed to match the naming convention of the other
+             Spring AI modules. The old coordinate no longer exists in the 2.0
+             BOM, so Maven cannot resolve a version for it and the reactor fails
+             before compiling anything:
+               'dependencies.dependency.version' ... is missing
+             That message reads like a POM mistake, but it is a rename. -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-advisors-vector-store</artifactId>
+            <artifactId>spring-ai-vector-store-advisor</artifactId>
         </dependency>
 
         <!-- Redis chat memory (uncomment when Docker is running) -->
@@ -62,6 +71,8 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency> -->
 
+        <!-- Actuator: endpoints AND the condition that enables OTLP log export
+             (ConditionalOnEnabledLoggingExport). Do not remove. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>

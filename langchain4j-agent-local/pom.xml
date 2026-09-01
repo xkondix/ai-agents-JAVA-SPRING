@@ -14,7 +14,7 @@
     <artifactId>langchain4j-agent-local</artifactId>
     <name>LangChain4j Agent Local - Raw loop + AiServices + Memory</name>
     <description>
-        Demonstrates the agent loop concept using LangChain4j 1.15.1
+        Demonstrates the agent loop concept using LangChain4j
         with LOCAL tools (@Tool annotation, same process).
 
         1. RAW LOOP    - manual while-loop without any framework abstractions.
@@ -31,6 +31,8 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Core artifacts: independent of the Spring Boot version,
+             unchanged by the Boot 4 migration. -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j</artifactId>
@@ -39,13 +41,29 @@
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-core</artifactId>
         </dependency>
+
+        <!-- ── STARTERS: the spring-boot4 family, not spring-boot ───────
+             LangChain4j ships two parallel starter families at the SAME
+             version, told apart only by artifactId:
+               langchain4j-*-spring-boot-starter   -> Spring Boot 3.5+
+               langchain4j-*-spring-boot4-starter  -> Spring Boot 4.0+
+             Both are managed by langchain4j-bom 1.16.3, so swapping them
+             needs no version change on the BOM.
+
+             The Boot 3 variant does NOT work on Boot 4: its auto-configurations
+             import classes that changed package in Boot 4 (for example
+             org.springframework.boot.autoconfigure.web.client.RestClientAutoConfiguration
+             -> org.springframework.boot.restclient.autoconfigure.RestClientAutoConfiguration),
+             which fails with IllegalStateException: Failed to generate bean
+             name for imported class. The symptom is loud but misleading — it
+             looks like a bean problem and is a starter-version problem. -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-spring-boot-starter</artifactId>
+            <artifactId>langchain4j-spring-boot4-starter</artifactId>
         </dependency>
         <dependency>
             <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-ollama-spring-boot-starter</artifactId>
+            <artifactId>langchain4j-ollama-spring-boot4-starter</artifactId>
         </dependency>
 
         <!-- OpenAI-compatible starter — used by the "openrouter" Spring
@@ -54,12 +72,13 @@
              OpenAI model bean is created and no API key is required. -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
+            <artifactId>langchain4j-open-ai-spring-boot4-starter</artifactId>
         </dependency>
 
         <!--
             Redis chat memory — moved to langchain4j-community in LangChain4j 1.x
             To restore: use langchain4j-community-redis-spring-boot-starter:1.0.0-beta5
+            (on Boot 4, first check whether community ships a spring-boot4 variant)
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-community-redis-spring-boot-starter</artifactId>
@@ -71,6 +90,8 @@
         </dependency>
         -->
 
+        <!-- Actuator: endpoints AND the condition that enables OTLP log export
+             (ConditionalOnEnabledLoggingExport). Do not remove. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>

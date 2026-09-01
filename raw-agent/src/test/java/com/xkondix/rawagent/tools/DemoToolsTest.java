@@ -1,9 +1,9 @@
 package com.xkondix.rawagent.tools;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xkondix.rawagent.model.ToolDefinition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
@@ -12,6 +12,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for manual tool registration and routing.
  * Uses a real ObjectMapper — argument parsing is part of the contract.
+ *
+ * JACKSON 3 (Spring Boot 4): tools.jackson.databind.ObjectMapper, and
+ * JsonNode.asText() is superseded by asString().
  */
 class DemoToolsTest {
 
@@ -42,7 +45,7 @@ class DemoToolsTest {
 
         var params = def.function().parameters();
         assertThat(params.get("properties").has("number")).isTrue();
-        assertThat(params.get("required").get(0).asText()).isEqualTo("number");
+        assertThat(params.get("required").get(0).asString()).isEqualTo("number");
     }
 
     // ── Routing / execution ───────────────────────────────────────────────

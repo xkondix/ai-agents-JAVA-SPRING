@@ -1,6 +1,5 @@
 package com.xkondix.rawagent.agent;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xkondix.rawagent.config.RawAgentProperties;
 import com.xkondix.rawagent.model.ChatRequest;
 import com.xkondix.rawagent.model.ChatResponse;
@@ -15,6 +14,8 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -33,6 +34,14 @@ import java.util.List;
  *
  * This is what LangChain4j and Spring AI do internally —
  * they just add abstractions on top.
+ *
+ * JACKSON 3 (Spring Boot 4): the injected ObjectMapper is
+ * tools.jackson.databind.ObjectMapper. Boot 4 auto-configures only that type;
+ * Jackson 2 remains on the classpath (managed by the Boot BOM) so old imports
+ * still COMPILE, which makes this a startup failure rather than a build one:
+ *   "Parameter 1 of constructor in LlmClient required a bean of type
+ *    'com.fasterxml.jackson.databind.ObjectMapper' that could not be found."
+ * The method names used here (writeValueAsString, readValue) are unchanged.
  *
  * OBSERVABILITY BY HAND — the third rung of the ladder:
  *   raw-agent    → you create spans and count tokens yourself (this class),
@@ -139,6 +148,11 @@ public class LlmClient {
         span.tag("framework", "raw");
 
         try (Tracer.SpanInScope ignored = tracer.withSpan(span.start())) {
+            // Jackson 3 throws the UNCHECKED JacksonException instead of the
+            // checked JsonProcessingException. The catch blocks below already
+            // cover RuntimeException, so behaviour is unchanged — but a
+            // "catch (JsonProcessingException)" elsewhere would now be a
+            // compile error for catching an impossible checked exception.
             String json = objectMapper.writeValueAsString(body);
             log.debug("[LLM] POST {}", url);
 
