@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SHARED LOGBACK CONFIGURATION — lives in `common`, applies to all modules.
+
+    Spring Boot reads logback-spring.xml from the ROOT of the classpath, and a
+    dependency jar is part of that classpath. So this single file configures
+    logging for every module that depends on `common`: mcp-server, raw-agent,
+    both langchain4j-agent-*, both spring-ai-agent-*, and both patterns-*.
+
+    THE POINT OF THIS FILE IS THE OTEL APPENDER. Spring Boot 4 auto-configures
+    the OpenTelemetry logging SDK and its OTLP exporter (given actuator on the
+    classpath, which supplies ConditionalOnEnabledLoggingExport), but it does
+    NOT connect Logback to that SDK. The bridge is ours: this appender plus
+    OtelLoggingBridgeAutoConfiguration, which arms it with install().
+
+    NOTE ON claude-mcp-server: that module is outside the reactor, does not
+    depend on `common`, and keeps its own copy of this file — deliberately
+    WITHOUT a console appender, because it speaks JSON-RPC over stdout and a
+    single log line there corrupts the protocol. Here the opposite is true:
+    these are ordinary web applications and console output is what you read
+    while running them from the IDE.
+
+    Boot's own includes are reused so the format, colours and the trace/span
+    correlation pattern stay exactly as they were before this file existed:
+      defaults.xml         conversion rules, LOG_LEVEL_PATTERN (incl. correlation)
+      console-appender.xml the standard CONSOLE appender
+-->
+<configuration>
+
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <!--
+        Bridge from Logback to the OpenTelemetry logging SDK.
+
+        Inert until OpenTelemetryAppender.install(openTelemetry) runs — until
+        then it accepts records and drops them silently.
+
+        The appender reads the ACTIVE OTel context when a record is emitted, so
+        every line logged inside a span carries its trace_id and span_id into
+        Loki. That is what makes the jump
+        Grafana panel -> Tempo trace -> "Logs for this span" work.
+    -->
+    <appender name="OTEL"
+              class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender"/>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         CONSOLE-ONLY LOGGERS
+
+         "What to log" and "what to EXPORT" are two separate decisions, and
+         additivity="false" is the knob that separates them. Everything below
+         stays fully visible in the terminal and never reaches Loki.
+         ══════════════════════════════════════════════════════════════════ -->
+
+    <!--
+        TELEMETRY MUST NOT REPORT ON ITSELF.
+
+        Both of these loggers talk about the export pipeline: OtlpMeterRegistry
+        logs "Failed to publish metrics ... Connection refused" when the LGTM
+        stack is down, and the OTel SDK logs its own exporter failures (Boot
+        bridges JUL to SLF4J, so those land here too).
+
+        With the OTEL appender attached to root, such a line would be queued for
+        export to the very endpoint that just refused the connection, and each
+        failure would generate another.
+    -->
+    <logger name="io.opentelemetry" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+    <logger name="io.micrometer" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+
+    <!--
+        LANGCHAIN4J RAW HTTP — valuable to watch, too expensive to ship.
+
+        Driven by log-requests/log-responses in application.yml, this logger
+        prints the full outgoing request (model, temperature, every tool schema,
+        the entire prompt) and the full response (Cloudflare headers, cookies,
+        the whole completion body). One agent call is easily 20-35 kB.
+
+        Worth keeping on the console: it is the clearest demonstration of what
+        actually goes over the wire, and the contrast with raw-agent — which
+        narrates its LOOP instead — is a talking point in itself. LangChain4j
+        masks the Authorization header, but not response bodies.
+
+        Not worth keeping in Loki: the same prompt and completion are already
+        on the span as gen_ai.* attributes, with correlation, in a form that is
+        far easier to query.
+    -->
+    <logger name="dev.langchain4j.http.client.log" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+
+    <!--
+        MCP PROTOCOL CHATTER — a genuine volume problem.
+
+        The LangChain4j MCP client runs a health checker that sends
+        {"method":"ping"} on a loop, and this logger prints FOUR lines per ping
+        (the request, then the SSE id / event / data frames). Observed bursts
+        run at roughly one ping per millisecond — over a thousand lines in a
+        single second, none of it carrying a trace id.
+
+        Harmless while it only reached the console. Since the OTLP bridge was
+        added it would be shipped to Loki as well, which is a real cost for
+        zero diagnostic value: the meaningful MCP events (tools/list,
+        tools/call) are already visible as SPANS in Tempo.
+
+        Note the logger name is the literal string "MCP", not a package —
+        LangChain4j names it that way, so it cannot be silenced by package.
+    -->
+    <logger name="MCP" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+
+    <!--
+        Root level stays at INFO here, but Boot applies logging.level.* from
+        application.yml AFTER loading this file, so per-module settings such as
+        `com.xkondix: DEBUG` still win. This is a baseline, not an override.
+    -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="OTEL"/>
+    </root>
+
+</configuration>

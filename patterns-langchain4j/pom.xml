@@ -32,27 +32,34 @@
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j</artifactId>
         </dependency>
+
+        <!-- ── STARTERS: the spring-boot4 family ────────────────────────
+             Same version as the Boot 3 variants, different artifactId.
+             Managed by langchain4j-bom 1.16.3. -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-spring-boot-starter</artifactId>
+            <artifactId>langchain4j-spring-boot4-starter</artifactId>
         </dependency>
         <dependency>
             <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-ollama-spring-boot-starter</artifactId>
+            <artifactId>langchain4j-ollama-spring-boot4-starter</artifactId>
         </dependency>
         <dependency>
             <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
+            <artifactId>langchain4j-open-ai-spring-boot4-starter</artifactId>
         </dependency>
 
         <!-- Agentic DSL: sequenceBuilder / loopBuilder / conditionalBuilder.
-             Version managed by langchain4j-bom (beta artifact, same as
-             langchain4j-mcp which resolves to 1.16.3-beta26). -->
+             Non-starter artifact, independent of the Boot version.
+             Version managed by langchain4j-bom (beta line, same as
+             langchain4j-mcp — resolves to 1.16.3-beta26). -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-agentic</artifactId>
         </dependency>
 
+        <!-- Actuator: endpoints AND the condition that enables OTLP log export
+             (ConditionalOnEnabledLoggingExport). Do not remove. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>

@@ -1,11 +1,12 @@
 package com.xkondix.rawagent.tools;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.xkondix.rawagent.model.ToolDefinition;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
+
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -19,6 +20,12 @@ import java.util.List;
  *
  * This is exactly what @Tool annotation generates automatically
  * in LangChain4j and Spring AI.
+ *
+ * JACKSON 3 (Spring Boot 4): databind moved to the tools.jackson root package.
+ * The node-building API used below (createObjectNode / put / putObject /
+ * putArray / readTree) is unchanged. One rename does affect this class:
+ * JsonNode.asText() is superseded by asString() — asText() still exists but is
+ * legacy, so the reads below use the new name.
  */
 @Slf4j
 @Component
@@ -52,7 +59,7 @@ public class DemoTools {
                 case "calculateSquare"  -> String.valueOf(
                         calculateSquare(args.get("number").asInt()));
                 case "getWeather"       -> getWeather(
-                        args.get("city").asText());
+                        args.get("city").asString());
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {

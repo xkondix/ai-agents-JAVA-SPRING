@@ -68,6 +68,34 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- ── Logback -> OpenTelemetry logs bridge ─────────────────────
+             NOT optional, and NOT transitive by accident: this is the one
+             piece that makes application logs reach Loki, and it is placed
+             here so all nine modules inherit it from a single declaration.
+
+             Spring Boot 4 auto-configures the logging SDK and its OTLP
+             exporter, but does NOT connect Logback to it. Two things are
+             ours, both also in this module:
+               logback-spring.xml                 declares the appender
+               OtelLoggingBridgeAutoConfiguration arms it via install()
+             Skip either and the endpoint still binds, the SDK still starts,
+             and not a single line reaches Loki — with no error anywhere.
+
+             Version pinned in the parent: Boot manages opentelemetry-bom but
+             not the io.opentelemetry.instrumentation group.               -->
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-logback-appender-1.0</artifactId>
+        </dependency>
+        <!-- OpenTelemetry API — for the OpenTelemetry bean injected by the
+             bridge auto-configuration. Optional: every consumer already has
+             it through spring-boot-starter-opentelemetry (parent).        -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- LangChain4j — ONLY for the GenAI metrics/tracing listener and the
              TracingToolProvider decorator. Both are OPTIONAL dependencies:
              the auto-config activates via @ConditionalOnClass exclusively in

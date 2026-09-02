@@ -1,26 +1,40 @@
 package com.xkondix.mcpserver.tools;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.tool.annotation.Tool;
-import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.ai.mcp.annotation.McpTool;
+import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 
 /**
  * Game statistics tools exposed via MCP.
- * Spring AI @Tool approach — JSON Schema generated automatically.
+ *
+ * SPRING AI 2.0 — @McpTool, NOT @Tool.
+ * @Tool + MethodToolCallbackProvider described a tool for an AGENT's own tool
+ * loop; exposing it over MCP was a side effect of that registration. In 2.0 the
+ * MCP server has its own annotation and its own scanner, so the two concerns
+ * are separate: @Tool stays for local tools inside an agent, @McpTool is the
+ * wire contract of an MCP server.
+ *
+ * Tool names are declared EXPLICITLY. Derivation from the method name works,
+ * but it makes the wire contract a side effect of a refactor — rename the
+ * method and every connected client silently loses a tool.
  */
 @Slf4j
 @Service
 public class GameStatsTools {
 
-    @Tool(description = """
+    @McpTool(name = "get_game_stats", description = """
             Returns game statistics: top score, average score, total games played.
             Supported game types: SNAKE, RACING.
             Optionally filter by user ID.
-            """)
+            """,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true))
     public String get_game_stats(
-            @ToolParam(description = "Type of game: SNAKE or RACING") String gameType,
-            @ToolParam(description = "Optional user ID to filter stats. Leave empty for all users.") String userId) {
+            @McpToolParam(description = "Type of game: SNAKE or RACING", required = true)
+            String gameType,
+            @McpToolParam(description = "Optional user ID to filter stats. Leave empty for all users.",
+                    required = false)
+            String userId) {
         log.info("[MCP] get_game_stats gameType={} userId={}", gameType, userId);
         String user = (userId == null || userId.isBlank()) ? "all" : userId;
         return String.format(

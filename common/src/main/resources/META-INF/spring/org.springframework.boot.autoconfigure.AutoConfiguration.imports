@@ -1,2 +1,3 @@
 com.xkondix.common.observability.ObservabilityAutoConfiguration
 com.xkondix.common.observability.Lc4jGenAiMetricsAutoConfiguration
+com.xkondix.common.observability.OtelLoggingBridgeAutoConfiguration

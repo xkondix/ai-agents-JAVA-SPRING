@@ -1,13 +1,14 @@
 package com.xkondix.lc4j.agent.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xkondix.lc4j.agent.tools.DemoTools;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
 import java.util.List;
 
 /**
@@ -16,6 +17,16 @@ import java.util.List;
  * instead of manual string manipulation.
  *
  * In production: use AiServices which handles this automatically.
+ *
+ * JACKSON 3 (Spring Boot 4): databind moved to the tools.jackson root package.
+ * This class builds its own ObjectMapper rather than injecting the Boot one, so
+ * it kept compiling after the upgrade and would have failed only at runtime —
+ * unlike LlmClient in raw-agent, which injects the bean and therefore broke the
+ * context at startup with a clear message. The quiet variant is the dangerous
+ * one, which is why both were migrated together.
+ *
+ * JsonNode.asText() is superseded by asString() in Jackson 3; asText() still
+ * exists but is legacy, so the read below uses the new name.
  */
 @Slf4j
 @Component
@@ -39,7 +50,7 @@ public class RawToolExecutor {
                     yield String.valueOf(demoTools.calculateSquare(n));
                 }
                 case "getWeather" -> {
-                    String city = args.get("city").asText();
+                    String city = args.get("city").asString();
                     yield demoTools.getWeather(city);
                 }
                 default -> "Unknown tool: " + toolName;

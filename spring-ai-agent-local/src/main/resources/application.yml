@@ -25,6 +25,20 @@ spring:
         include-completion: true
 
 # ── Observability ─────────────────────────────────────────────────────────
+# Three signals, one port. Boot 4 property layout:
+#   traces  : management.opentelemetry.tracing.export.otlp.endpoint
+#             (Boot 3 spelling was management.otlp.tracing.endpoint — DEAD)
+#   logs    : management.opentelemetry.logging.export.otlp.endpoint
+#   metrics : management.otlp.metrics.export.url  (Micrometer OtlpMeterRegistry,
+#             not the OTel SDK — hence the deliberately different prefix)
+#
+# Logs additionally need the Logback->OTel bridge from `common`
+# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration) plus actuator on
+# the classpath. Miss either and Loki stays empty with no error anywhere.
+#
+# An unknown property is ignored in silence, so the Boot 3 spelling is removed
+# rather than kept "just in case": metrics would arrive in Prometheus, Tempo
+# would stay empty, and nothing would say why.
 management:
   endpoints:
     web:
@@ -33,9 +47,16 @@ management:
   tracing:
     sampling:
       probability: 1.0
-  otlp:
+  opentelemetry:
     tracing:
-      endpoint: http://localhost:4318/v1/traces
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+    logging:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/logs
+  otlp:
     metrics:
       export:
         url: http://localhost:4318/v1/metrics
@@ -66,8 +87,20 @@ spring:
 ---
 # ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
 # API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
-# Spring AI appends /v1/chat/completions itself — base-url WITHOUT /v1
-# (unlike LangChain4j and raw-agent).
+#
+# BASE-URL NOW INCLUDES /v1 — CHANGED IN SPRING AI 2.0.
+# The OpenAI model was rewritten on top of the official OpenAI Java SDK
+# (com.openai:openai-java-core), replacing the RestClient implementation:
+#
+#   Spring AI 1.x : base-url + completions-path
+#                   https://openrouter.ai/api  +  /v1/chat/completions
+#   Spring AI 2.0 : base-url handed to the SDK, which appends
+#                   /chat/completions itself
+#
+# completions-path no longer exists as a property, so /v1 belongs in base-url.
+# With the stale value the request goes to /api/chat/completions and OpenRouter
+# answers 404, surfacing as com.openai.errors.NotFoundException: 404: Unknown —
+# a message that says nothing about the URL.
 spring:
   config:
     activate:
@@ -76,9 +109,13 @@ spring:
     model:
       chat: openai   # activates only the OpenAI chat autoconfiguration
     openai:
-      base-url: https://openrouter.ai/api
+      base-url: https://openrouter.ai/api/v1
       api-key: ${OPENROUTER_API_KEY}
       chat:
         options:
+          # The .options infix SURVIVED for chat in 2.0 (OpenAiChatProperties
+          # still nests an Options object under spring.ai.openai.chat).
+          # It was flattened only for embedding, image, audio, moderation
+          # and OCR — do not "fix" those by analogy with this block.
           model: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
           temperature: 0.3

@@ -8,15 +8,31 @@ spring:
   profiles:
     default: openrouter   # switch back to Ollama with --spring.profiles.active=local
 
-# code-mcp-server connection (port 8086) — enable ONLY when that server runs
-# with transport=SYNC_HTTP_SSE; with STDIO the eager client init would kill
-# application startup.
+# claude-mcp-server runs in STDIO mode, dedicated to Claude Desktop, so it is
+# not reachable over HTTP from here. Kept disabled: an eager client init
+# against a non-existent endpoint would kill application startup.
 lc4j:
   mcp:
     code-server:
       enabled: false
 
 # ── Observability ─────────────────────────────────────────────────────────
+# Three signals, one port. Boot 4 property layout:
+#   traces  : management.opentelemetry.tracing.export.otlp.endpoint
+#             (Boot 3 spelling was management.otlp.tracing.endpoint — DEAD)
+#   logs    : management.opentelemetry.logging.export.otlp.endpoint
+#   metrics : management.otlp.metrics.export.url  (Micrometer OtlpMeterRegistry,
+#             not the OTel SDK — hence the deliberately different prefix)
+#
+# Logs additionally need the Logback->OTel bridge from `common`
+# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration) plus actuator on
+# the classpath. Miss either and Loki stays empty with no error anywhere.
+#
+# Worth knowing what this module is SUPPOSED to look like in Tempo: unlike
+# spring-ai-agent-mcp, trace propagation over MCP was deliberately NOT
+# implemented here — it stays as the A2A-vs-MCP contrast for part 2. So agent
+# and mcp-server traces are expected to be separate. "Two traces instead of
+# one" is the intended result here, not a regression.
 management:
   endpoints:
     web:
@@ -25,9 +41,16 @@ management:
   tracing:
     sampling:
       probability: 1.0
-  otlp:
+  opentelemetry:
     tracing:
-      endpoint: http://localhost:4318/v1/traces
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+    logging:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/logs
+  otlp:
     metrics:
       export:
         url: http://localhost:4318/v1/metrics
@@ -57,7 +80,9 @@ langchain4j:
 ---
 # ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
 # API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
-# LangChain4j needs the /v1 suffix in base-url (unlike Spring AI).
+# LangChain4j needs the /v1 suffix in base-url. Since Spring AI 2.0 moved to
+# the official OpenAI SDK and dropped completions-path, the Spring AI modules
+# now need it too — so all seven modules finally agree on this URL.
 spring:
   config:
     activate:
