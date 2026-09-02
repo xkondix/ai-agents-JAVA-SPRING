@@ -30,43 +30,50 @@ import java.util.concurrent.Executors;
  *
  * Demo: score every rumored transfer candidate concurrently, pick the best.
  *
- * ── JACKSON 3 AND THE STRUCTURED OUTPUT ─────────────────────────────────────
+ * ── STRUCTURED OUTPUT IS BEST-EFFORT; THE CODE HAS TO SAY SO ────────────────
  *
- * CandidateScore.score used to be a primitive double. On Boot 3 / Jackson 2 a
- * response with the field missing or null quietly became 0.0; Jackson 3 ships
- * with FAIL_ON_NULL_FOR_PRIMITIVES enabled by default (Jackson 2 default was
- * off), so the same response now fails the whole fan-out:
+ * BeanOutputConverter puts a JSON schema into the prompt and parses whatever
+ * comes back. gpt-4o-mini at temperature 0.3 occasionally returns a partial
+ * object — a missing "score", or an empty {} — and the two ways to fail were
+ * both wrong:
+ *   - primitive `double score` + Jackson 3 (FAIL_ON_NULL_FOR_PRIMITIVES is
+ *     ON by default, unlike Jackson 2): MismatchedInputException, the whole
+ *     fan-out failed with 500 while the LangChain4j twin returned normally;
+ *   - boxed Double + "count null as 0.0": no error, but a candidate silently
+ *     scored 0.0 with player=null, and the wrong candidate "won"
+ *     (seen 2026-09-02: Jonathan David dropped, Zirkzee ranked first).
+ * A silent wrong answer is worse than a loud failure for a demo about
+ * observability. So: a branch that comes back unusable is RETRIED once with
+ * a blunter prompt, and only if that also fails is it recorded as 0.0 with a
+ * WARN and an explicit rationale — visible in the answer, in Loki, and as a
+ * second chat span in the trace (the retry is part of the waterfall on
+ * purpose: "one branch needed two calls" is exactly what a trace is for).
  *
- *   MismatchedInputException: Cannot map `null` into type `double`
- *   (through reference chain: ParallelizationPattern$CandidateScore["score"])
- *
- * Seen live on 2026-09-02: one of three branches came back without "score",
- * BeanOutputConverter threw, CompletableFuture.join() rethrew it as a
- * CompletionException and the endpoint answered 500 — while the LangChain4j
- * twin, which has its own parser, returned normally. A silent
- * Jackson-2-to-3 behaviour change that no grep for old package names finds.
- *
- * The field is now a boxed Double and normalised right after parsing: a
- * missing score is logged and treated as 0.0 (the candidate simply cannot
- * win), and the aggregation never trips over a null. The model is also told
- * the field is mandatory — BeanOutputConverter already ships the JSON schema
- * with "required", but gpt-4o-mini at temperature 0.3 still drops it now
- * and then, so the code has to tolerate it.
+ * The proper fix is OpenAI strict JSON-schema mode (responseFormat
+ * JSON_SCHEMA in OpenAiChatOptions), which guarantees the shape; it is left
+ * out here because it ties the pattern to one provider's option and the talk
+ * compares frameworks, not providers.
  */
 @Slf4j
 @Service
 public class ParallelizationPattern {
 
     /**
-     * Boxed on purpose — see the class comment. A null here means "the model
-     * did not provide a score", not "zero".
+     * Boxed on purpose — a null here means "the model did not provide a
+     * score", not "zero". See the class comment.
      */
     public record CandidateScore(String player, Double score, String rationale) {
 
         double scoreOrZero() {
             return score == null ? 0.0 : score;
         }
+
+        boolean isUsable() {
+            return player != null && !player.isBlank() && score != null;
+        }
     }
+
+    private static final int MAX_ATTEMPTS = 2;
 
     private final ChatClient plainAgent;
     private final ExecutorService executor =
@@ -100,28 +107,35 @@ public class ParallelizationPattern {
                 + "\n\nAll scores: " + scores;
     }
 
-    /**
-     * One branch of the fan-out. The rumor is rendered through its toString()
-     * in the prompt, exactly as the inline lambda did before this was
-     * extracted — the record's fields (player, target, probability, note) are
-     * what the model scores.
-     */
+    /** One branch of the fan-out — up to MAX_ATTEMPTS calls, see the class comment. */
     private CandidateScore score(MilanKnowledgeBase.Rumor rumor) {
-        CandidateScore parsed = plainAgent.prompt()
-                .user("Score this transfer candidate for AC Milan from 0.0 to 1.0 "
-                        + "considering probability and squad needs. "
-                        + "The numeric field \"score\" is mandatory. Candidate: " + rumor)
-                .call()
-                .entity(CandidateScore.class);
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            CandidateScore parsed = plainAgent.prompt()
+                    .user(prompt(rumor, attempt))
+                    .call()
+                    .entity(CandidateScore.class);
 
-        if (parsed == null) {
-            log.warn("[PARALLEL] model returned no parsable object for: {}", rumor);
-            return new CandidateScore("unknown", 0.0, "no structured answer");
+            if (parsed != null && parsed.isUsable()) {
+                return parsed;
+            }
+            log.warn("[PARALLEL] attempt {}/{} for {} returned an unusable object: {}",
+                    attempt, MAX_ATTEMPTS, rumor.player(), parsed);
         }
-        if (parsed.score() == null) {
-            log.warn("[PARALLEL] model omitted \"score\" for {} — counting as 0.0", parsed.player());
-            return new CandidateScore(parsed.player(), 0.0, parsed.rationale());
+        log.warn("[PARALLEL] giving up on {} — recorded as 0.0", rumor.player());
+        return new CandidateScore(rumor.player(), 0.0,
+                "no structured answer after " + MAX_ATTEMPTS + " attempts");
+    }
+
+    private static String prompt(MilanKnowledgeBase.Rumor rumor, int attempt) {
+        String base = "Score this transfer candidate for AC Milan from 0.0 to 1.0 "
+                + "considering probability and squad needs. Candidate: " + rumor;
+        if (attempt == 1) {
+            return base;
         }
-        return parsed;
+        // Retry: name the fields, name the player, leave nothing to infer.
+        return base + "\nReturn a JSON object with EXACTLY these fields: "
+                + "\"player\" (string, must be \"" + rumor.player() + "\"), "
+                + "\"score\" (number between 0.0 and 1.0), "
+                + "\"rationale\" (string). All three are mandatory.";
     }
 }

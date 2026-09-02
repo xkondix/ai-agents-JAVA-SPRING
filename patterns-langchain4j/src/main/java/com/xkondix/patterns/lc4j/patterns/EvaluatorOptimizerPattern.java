@@ -27,6 +27,15 @@ import org.springframework.stereotype.Service;
  * Method.invoke) without setAccessible(), so package-private interfaces
  * blow up with IllegalAccessException before any LLM call happens.
  *
+ * THE SCORER MUST BE STRICT, OR THE LOOP NEVER LOOPS. With 8 players in the
+ * 2007 squad a legal XI was impossible; the proposer wrote "RB: TBD (not
+ * listed, could be Cafu)", the scorer still returned >= 0.8 and the loop
+ * exited after one pass — the fixer never ran, so the trace showed the
+ * "chat+chat pair" exactly zero times. Two fixes: MilanKnowledgeBase now
+ * holds a full XI plus bench per season, and the scorer prompt below makes
+ * an outsider or a placeholder an automatic fail. A loop demo is only a demo
+ * when the first proposal can lose.
+ *
  * Trace signature: N repetitions of the chat+chat pair.
  */
 @Slf4j
@@ -36,22 +45,29 @@ public class EvaluatorOptimizerPattern {
     public interface LineupProposer {
         @Agent("Proposes a starting XI for a squad")
         @UserMessage("Propose a starting XI formation and lineup for AC Milan "
-                + "based on: {{squadData}}")
+                + "using ONLY players from this list (name and shirt number): {{squadData}}")
         String propose(@V("squadData") String squadData);
     }
 
     public interface LineupScorer {
         @Agent("Scores a lineup proposal from 0.0 to 1.0")
-        @UserMessage("Score this lineup from 0.0 to 1.0 (uses only listed players, "
-                + "covers GK/DEF/MID/ATT, coherent formation). Return ONLY the number.\n"
-                + "Squad: {{squadData}}\nLineup: {{solution}}")
+        @UserMessage("""
+                Score this lineup from 0.0 to 1.0. Rules, applied in order:
+                - any player NOT in the squad list, or any placeholder such as
+                  "TBD" / "not listed" / "could be": score at most 0.3
+                - fewer or more than 11 starters: score at most 0.4
+                - GK, DEF, MID and ATT all covered and the formation coherent: 0.8 or above
+                Return ONLY the number.
+                Squad: {{squadData}}
+                Lineup: {{solution}}""")
         double score(@V("squadData") String squadData, @V("solution") String solution);
     }
 
     public interface LineupFixer {
         @Agent("Improves a lineup proposal")
-        @UserMessage("Improve this lineup so it uses only listed players and covers "
-                + "all lines. Squad: {{squadData}}\nCurrent lineup: {{solution}}")
+        @UserMessage("Rewrite this lineup so that it has exactly 11 starters, every one "
+                + "of them taken from the squad list (no placeholders, no outsiders), "
+                + "and all lines covered. Squad: {{squadData}}\nCurrent lineup: {{solution}}")
         String fix(@V("squadData") String squadData, @V("solution") String solution);
     }
 
