@@ -71,6 +71,17 @@ services:
       # exported as JSON into ./grafana/provisioning/dashboards survives
       # and ships with the repo.
       - ./grafana/provisioning/dashboards:/otel-lgtm/grafana/conf/provisioning/dashboards
+
+      # Provisioned datasources — same reasoning, learned the hard way.
+      # The Trace-to-logs settings on the Tempo datasource (time shifts, no
+      # service.name tag, custom trace_id query) were rebuilt by hand twice
+      # after the container was recreated.
+      #
+      # NOTE: this mount REPLACES the datasource provisioning that
+      # grafana/otel-lgtm ships, so datasources.yml must declare ALL of them —
+      # Prometheus, Tempo, Loki and Pyroscope. A missing entry does not fall
+      # back to the image default; the datasource simply disappears.
+      - ./grafana/provisioning/datasources:/otel-lgtm/grafana/conf/provisioning/datasources
     restart: unless-stopped
 
 volumes:

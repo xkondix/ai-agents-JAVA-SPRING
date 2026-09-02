@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -61,6 +62,7 @@ import org.springframework.context.annotation.Bean;
  */
 @AutoConfiguration
 @ConditionalOnClass({ChatModelListener.class, MeterRegistry.class})
+@EnableConfigurationProperties(GenAiContentProperties.class)
 public class Lc4jGenAiMetricsAutoConfiguration {
 
     private static final Logger log =
@@ -68,18 +70,25 @@ public class Lc4jGenAiMetricsAutoConfiguration {
 
     @Bean
     ChatModelListener genAiMetricsChatModelListener(ObjectProvider<MeterRegistry> registryProvider,
-                                                    ObjectProvider<Tracer> tracerProvider) {
+                                                    ObjectProvider<Tracer> tracerProvider,
+                                                    GenAiContentProperties contentProperties) {
         MeterRegistry registry = registryProvider.getIfAvailable(SimpleMeterRegistry::new);
         Tracer tracer = tracerProvider.getIfAvailable();
 
         // Logged at INFO on purpose: this line is the only cheap way to tell,
         // at a glance, whether LangChain4j observability is actually on. Its
-        // ABSENCE is what identified the bug above.
+        // ABSENCE is what identified the ordering bug above. The content flags
+        // are included because "the prompt is missing from the span" is
+        // otherwise indistinguishable from "content capture is switched off".
         log.info("[OBSERVABILITY] LangChain4j GenAI listener registered "
-                        + "(metrics: gen.ai.client.* -> {}, spans: {}, framework=langchain4j)",
+                        + "(metrics: gen.ai.client.* -> {}, spans: {}, "
+                        + "content: prompt={} completion={} maxLen={}, framework=langchain4j)",
                 registry.getClass().getSimpleName(),
-                tracer != null ? "chat <model>" : "DISABLED (no Tracer bean)");
+                tracer != null ? "chat <model>" : "DISABLED (no Tracer bean)",
+                contentProperties.includePrompt(),
+                contentProperties.includeCompletion(),
+                contentProperties.maxContentLength());
 
-        return new GenAiMetricsChatModelListener(registry, tracer);
+        return new GenAiMetricsChatModelListener(registry, tracer, contentProperties);
     }
 }
