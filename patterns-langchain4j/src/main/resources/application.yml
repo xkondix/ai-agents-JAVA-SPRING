@@ -18,6 +18,19 @@ spring:
 xkondix:
   approval:
     timeout-minutes: 10
+  # ── Prompt / completion content on LangChain4j spans ──────────────────────
+  # The LC4j counterpart of spring.ai.chat.observations.log-prompt /
+  # log-completion — with one deliberate difference in WHERE the content
+  # lands: Spring AI writes it to LOG lines (Loki, correlated by trace id),
+  # this listener puts it on the "chat <model>" SPAN as gen_ai.prompt /
+  # gen_ai.completion (Tempo). Same conversation, two signals — the contrast
+  # is part of the talk. Off by default in `common`; on here because the
+  # patterns are about what each step SAYS to the model.
+  observability:
+    genai:
+      include-prompt: true
+      include-completion: true
+      max-content-length: 4000
 
 # ── Observability ─────────────────────────────────────────────────────────
 # Three signals, one port. Boot 4 property layout:
@@ -28,8 +41,8 @@ xkondix:
 #             not the OTel SDK — hence the deliberately different prefix)
 #
 # Logs additionally need the Logback->OTel bridge from `common`
-# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration) plus actuator on
-# the classpath. Miss either and Loki stays empty with no error anywhere.
+# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration). Miss it and Loki
+# stays empty with no error anywhere.
 #
 # An empty Tempo hurts most in THIS module: the whole point of the patterns is
 # their TRACE SHAPE — a staircase for chaining, overlapping spans for

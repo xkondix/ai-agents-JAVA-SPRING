@@ -18,11 +18,24 @@ spring:
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   ai:
-    # Spring AI 1.1+ — GenAI Semantic Conventions (OTel)
     chat:
       observations:
-        include-prompt: true
-        include-completion: true
+        # PROMPT / COMPLETION CONTENT — RENAMED AND RELOCATED IN SPRING AI 1.0.0-M8.
+        #
+        # The previous keys were `include-prompt` / `include-completion`. They
+        # were renamed to `log-prompt` / `log-completion` and the content moved
+        # from span attributes to LOG lines (ChatModelPromptContentObservationHandler
+        # / ChatModelCompletionObservationHandler). An unknown key binds to
+        # nothing, so the old spelling was ignored in silence.
+        # Verified: docs.spring.io/spring-ai/reference/observability (2.0.x),
+        # upgrade-notes "Upgrading to 1.0.0-M8" / "1.0.0-RC1".
+        #
+        # Consequence for the framework comparison: Spring AI ships the
+        # conversation to LOKI (correlated by trace id), while the LangChain4j
+        # listener in `common` puts it on the SPAN in TEMPO (gen_ai.prompt /
+        # gen_ai.completion). Same data, two different signals — worth showing.
+        log-prompt: true
+        log-completion: true
 
 # ── Observability ─────────────────────────────────────────────────────────
 # Three signals, one port. Boot 4 property layout:
@@ -33,8 +46,8 @@ spring:
 #             not the OTel SDK — hence the deliberately different prefix)
 #
 # Logs additionally need the Logback->OTel bridge from `common`
-# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration) plus actuator on
-# the classpath. Miss either and Loki stays empty with no error anywhere.
+# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration). Miss it and Loki
+# stays empty with no error anywhere.
 #
 # An unknown property is ignored in silence, so the Boot 3 spelling is removed
 # rather than kept "just in case": metrics would arrive in Prometheus, Tempo

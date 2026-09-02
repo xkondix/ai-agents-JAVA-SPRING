@@ -23,8 +23,12 @@ spring:
   ai:
     chat:
       observations:
-        include-prompt: true
-        include-completion: true
+        # RENAMED IN SPRING AI 1.0.0-M8: include-prompt/include-completion ->
+        # log-prompt/log-completion; content goes to LOG lines (trace-correlated),
+        # not to span attributes. The old keys bound to nothing. Full note in
+        # spring-ai-agent-local/application.yml.
+        log-prompt: true
+        log-completion: true
 
 # Human-in-the-loop gate (common/approval)
 xkondix:
@@ -40,8 +44,8 @@ xkondix:
 #             not the OTel SDK — hence the deliberately different prefix)
 #
 # Logs additionally need the Logback->OTel bridge from `common`
-# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration) plus actuator on
-# the classpath. Miss either and Loki stays empty with no error anywhere.
+# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration). Miss it and Loki
+# stays empty with no error anywhere.
 #
 # An empty Tempo hurts most in THIS module: the whole point of the patterns is
 # their TRACE SHAPE — a staircase for chaining, overlapping spans for

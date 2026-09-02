@@ -20,8 +20,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * This server hands an LLM the ability to overwrite and delete files in a real
  * repository, with no human approval step (impossible over STDIO). The only
  * thing standing between a confused model and the rest of the disk is
- * resolveAndValidate() plus the extension allow-list — so those two deserve
- * tests far more than the happy path does.
+ * resolveAndValidate() plus the guard() gate — so those deserve tests far
+ * more than the happy path does.
  *
  * No Spring context: ClaudeMcpProperties is a record, so it can just be
  * constructed. That is a practical dividend of the record-based
@@ -78,6 +78,78 @@ class FileServiceTest {
                 .as("a rejected write must not touch the disk")
                 .isFalse();
     }
+
+    // ── the doors that used to be open ────────────────────────────────────
+
+    @Test
+    @DisplayName("move_file cannot rename a disallowed file into an allowed extension")
+    void moveFileRefusesToLaunderExtension() throws IOException {
+        Files.writeString(root.resolve(".env"), "OPENROUTER_API_KEY=secret");
+
+        assertThat(fileService.moveFile(".env", "notes.md"))
+                .startsWith("ERROR: File type not allowed");
+
+        assertThat(Files.exists(root.resolve(".env"))).isTrue();
+        assertThat(Files.exists(root.resolve("notes.md"))).isFalse();
+    }
+
+    @Test
+    @DisplayName("move_file refuses a destination outside the allow-list too")
+    void moveFileRefusesDisallowedDestination() throws IOException {
+        Files.writeString(root.resolve("notes.md"), "x");
+
+        assertThat(fileService.moveFile("notes.md", "notes.exe"))
+                .startsWith("ERROR: File type not allowed");
+    }
+
+    @Test
+    @DisplayName("delete_file refuses a file type outside the allow-list")
+    void deleteFileRefusesDisallowedExtension() throws IOException {
+        Files.writeString(root.resolve(".env"), "secret");
+
+        assertThat(fileService.deleteFile(".env"))
+                .startsWith("ERROR: File type not allowed");
+        assertThat(Files.exists(root.resolve(".env"))).isTrue();
+    }
+
+    @Test
+    @DisplayName("ignored directories are unreachable by direct path, not just skipped in walks")
+    void ignoredDirsAreUnreachableDirectly() throws IOException {
+        Files.createDirectories(root.resolve(".git"));
+        Files.writeString(root.resolve(".git").resolve("config.md"), "[core]");
+
+        assertThat(fileService.readFile(".git/config.md"))
+                .startsWith("ERROR: Path is inside an ignored directory");
+        assertThat(fileService.moveDirectory(".git", "elsewhere"))
+                .startsWith("ERROR: Path is inside an ignored directory");
+        assertThat(fileService.listFiles(".git"))
+                .startsWith("ERROR: Path is inside an ignored directory");
+    }
+
+    @Test
+    @DisplayName("move_directory refuses to move the project root itself")
+    void moveDirectoryRefusesRoot() throws IOException {
+        assertThat(fileService.moveDirectory("", "elsewhere"))
+                .startsWith("ERROR: Cannot move the project root");
+    }
+
+    @Test
+    @DisplayName("a symlink inside the project that points outside is not followed")
+    void symlinkEscapeIsRejected() throws IOException {
+        Path outside = Files.createTempDirectory("outside");
+        Files.writeString(outside.resolve("secret.md"), "outside");
+        try {
+            Files.createSymbolicLink(root.resolve("link"), outside);
+        } catch (UnsupportedOperationException | IOException e) {
+            return; // no symlink privilege on this OS/user — nothing to test
+        }
+
+        assertThatThrownBy(() -> fileService.readFile("link/secret.md"))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("via link");
+    }
+
+    // ── everyday behaviour ────────────────────────────────────────────────
 
     @Test
     @DisplayName("write then read returns exactly what was written")

@@ -1,9 +1,13 @@
 package com.xkondix.mcpserver.tools;
 
+import com.xkondix.common.observability.McpToolTelemetry;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
+
+import static com.xkondix.common.observability.McpToolTelemetry.len;
 
 /**
  * Game statistics tools exposed via MCP.
@@ -18,10 +22,18 @@ import org.springframework.stereotype.Service;
  * Tool names are declared EXPLICITLY. Derivation from the method name works,
  * but it makes the wire contract a side effect of a refactor — rename the
  * method and every connected client silently loses a tool.
+ *
+ * OBSERVABILITY: every call goes through McpToolTelemetry (module `common`),
+ * which adds a SERVER span "mcp_tool &lt;name&gt;" plus the mcp_tool_* meters.
+ * Spring AI 2.0 does not instrument the MCP server side itself; without the
+ * wrapper the propagated trace shows only `http post /mcp` here.
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class GameStatsTools {
+
+    private final McpToolTelemetry telemetry;
 
     @McpTool(name = "get_game_stats", description = """
             Returns game statistics: top score, average score, total games played.
@@ -35,10 +47,15 @@ public class GameStatsTools {
             @McpToolParam(description = "Optional user ID to filter stats. Leave empty for all users.",
                     required = false)
             String userId) {
-        log.info("[MCP] get_game_stats gameType={} userId={}", gameType, userId);
-        String user = (userId == null || userId.isBlank()) ? "all" : userId;
-        return String.format(
-                "Stats for %s (user: %s): TopScore=4200, Avg=1850, Games=47",
-                gameType, user);
+        return telemetry.traced("get_game_stats",
+                "gameType=" + gameType + " userId=" + userId,
+                len(gameType) + len(userId),
+                () -> {
+                    log.info("[MCP] get_game_stats gameType={} userId={}", gameType, userId);
+                    String user = (userId == null || userId.isBlank()) ? "all" : userId;
+                    return String.format(
+                            "Stats for %s (user: %s): TopScore=4200, Avg=1850, Games=47",
+                            gameType, user);
+                });
     }
 }

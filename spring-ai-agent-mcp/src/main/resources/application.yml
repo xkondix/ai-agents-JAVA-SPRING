@@ -7,8 +7,12 @@ spring:
     name: spring-ai-agent-mcp
   profiles:
     default: openrouter   # switch back to Ollama with --spring.profiles.active=local
-  main:
-    allow-bean-definition-overriding: true
+  # spring.main.allow-bean-definition-overriding is DELIBERATELY NOT SET.
+  # It used to be true, and it is the exact mechanism that once hid a broken
+  # tool registration: our "mcpToolCallbacks" bean was silently replaced by
+  # the auto-configured one and the model received zero tools (see
+  # McpClientConfig). With the flag off, a name collision fails the context
+  # loudly at startup — which is the behaviour a demo project wants.
   autoconfigure:
     # Chat provider is selected per profile via spring.ai.model.chat.
     # Only the non-chat OpenAI autoconfigurations stay excluded permanently.
@@ -19,11 +23,15 @@ spring:
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   ai:
-    # Spring AI 1.1+ — GenAI Semantic Conventions (OTel)
     chat:
       observations:
-        include-prompt: true
-        include-completion: true
+        # RENAMED IN SPRING AI 1.0.0-M8: include-prompt/include-completion ->
+        # log-prompt/log-completion, and the content now goes to LOG lines
+        # (correlated by trace id), not to span attributes. The old keys bound
+        # to nothing. See spring-ai-agent-local/application.yml for the full
+        # note and the source links.
+        log-prompt: true
+        log-completion: true
     mcp:
       client:
         enabled: true
@@ -66,15 +74,13 @@ spring:
 #             to the Micrometer OtlpMeterRegistry, not the OTel SDK, hence the
 #             deliberately different prefix)
 #
-# The LOGS line needs three things that Boot does NOT give you:
-#   1. spring-boot-starter-actuator on the classpath — its
-#      ConditionalOnEnabledLoggingExport is the FIRST condition of
-#      OtlpLoggingAutoConfiguration, so without it log export silently backs
-#      off while traces and metrics keep working
-#   2. the Logback appender + install() call — both live in `common`
+# The LOGS line needs two things that Boot does NOT give you:
+#   1. the Logback appender + install() call — both live in `common`
 #      (logback-spring.xml + OtelLoggingBridgeAutoConfiguration)
-#   3. this endpoint
-# Miss any one of them and Loki stays empty with no error anywhere.
+#   2. this endpoint
+# Miss either and Loki stays empty with no error anywhere.
+# (Boot 4.0.0 additionally required actuator on the classpath for log export;
+# that was fixed in 4.0.1. Actuator is still here for its endpoints.)
 #
 # This module is where the agent and mcp-server traces are joined into ONE
 # distributed trace, so getting the tracing endpoint wrong hurts most here:

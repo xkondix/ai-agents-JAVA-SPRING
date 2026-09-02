@@ -19,6 +19,22 @@ import org.springframework.context.annotation.Bean;
  * langchain4j-core is an OPTIONAL dependency of `common`, so Spring AI and raw
  * modules never load this configuration at all.
  *
+ * ── WHY A HAND-WRITTEN LISTENER, GIVEN THAT LANGCHAIN4J NOW HAS ITS OWN ──────
+ *
+ * LangChain4j ships two opt-in artifacts (docs.langchain4j.dev, Spring Boot
+ * Integration → Observability): langchain4j-micrometer-metrics
+ * (MicrometerMetricsChatModelListener) and langchain4j-observation
+ * (ObservationChatModelListener). Neither is pulled in by the starters, so
+ * nothing here double-counts. This project keeps its own listener on purpose:
+ *   - it is the middle rung of the "raw / listener / automatic" ladder the
+ *     talk is built around, and reading it shows exactly what a listener does;
+ *   - the official metrics listener records gen_ai.client.token.usage as a
+ *     DistributionSummary (histogram: _count/_sum/_max), while Spring AI and
+ *     raw-agent use a COUNTER (_total). Swapping it in would silently break
+ *     the shared token panels — the dashboard queries *_total.
+ * If you ever adopt the official artifact, add it INSTEAD of this bean, not
+ * next to it, and rewrite the token panels.
+ *
  * ── WHY THIS CLASS NO LONGER USES @ConditionalOnBean ──────────────────────
  *
  * It used to read:
@@ -59,6 +75,11 @@ import org.springframework.context.annotation.Bean;
  *
  * Tracer is resolved the same way — with tracing disabled the listener runs in
  * metrics-only mode instead of failing to wire.
+ *
+ * THE FALLBACK IS LOGGED AT WARN. A SimpleMeterRegistry exports nothing; if it
+ * is ever what this bean ends up with, the metrics silently vanish while every
+ * log line looks healthy. The pre-demo check is: the [OBSERVABILITY] line must
+ * say CompositeMeterRegistry, and there must be no WARN right after it.
  */
 @AutoConfiguration
 @ConditionalOnClass({ChatModelListener.class, MeterRegistry.class})
@@ -72,7 +93,12 @@ public class Lc4jGenAiMetricsAutoConfiguration {
     ChatModelListener genAiMetricsChatModelListener(ObjectProvider<MeterRegistry> registryProvider,
                                                     ObjectProvider<Tracer> tracerProvider,
                                                     GenAiContentProperties contentProperties) {
-        MeterRegistry registry = registryProvider.getIfAvailable(SimpleMeterRegistry::new);
+        MeterRegistry registry = registryProvider.getIfAvailable();
+        if (registry == null) {
+            log.warn("[OBSERVABILITY] No MeterRegistry bean — LangChain4j gen_ai.* metrics will NOT "
+                    + "be exported (in-memory SimpleMeterRegistry fallback)");
+            registry = new SimpleMeterRegistry();
+        }
         Tracer tracer = tracerProvider.getIfAvailable();
 
         // Logged at INFO on purpose: this line is the only cheap way to tell,
