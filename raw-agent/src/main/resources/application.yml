@@ -11,24 +11,13 @@ spring:
     default: openrouter
 
 # ── Observability ─────────────────────────────────────────────────────────
-# Three signals, one port. Boot 4 property layout:
-#   traces  : management.opentelemetry.tracing.export.otlp.endpoint
-#             (Boot 3 spelling was management.otlp.tracing.endpoint — DEAD)
-#   logs    : management.opentelemetry.logging.export.otlp.endpoint
-#   metrics : management.otlp.metrics.export.url  (Micrometer OtlpMeterRegistry,
-#             not the OTel SDK — hence the deliberately different prefix)
-#
-# Logs additionally need the Logback->OTel bridge from `common`
-# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration) plus actuator on
-# the classpath; without either, Loki stays empty and nothing is logged
-# about it.
+# Three signals to localhost:4318; property layout, the Logback->OTel bridge
+# and every silent failure found so far are documented in OBSERVABILITY.md.
 #
 # The tracing symptom is especially confusing in THIS module, because it builds
-# its spans BY HAND: trace and span ids still appear in every log line
-# (Micrometer puts them in the MDC), the ids still nest correctly, metrics
-# still reach Prometheus — and Tempo answers "failed to get trace with id ...:
-# Not Found", because nothing was ever exported. Working instrumentation, no
-# exporter.
+# its spans BY HAND: trace and span ids still appear in every log line, metrics
+# still reach Prometheus — and Tempo answers "Not Found", because nothing was
+# ever exported. Working instrumentation, no exporter.
 management:
   endpoints:
     web:
@@ -75,6 +64,11 @@ raw-agent:
 # API key comes ONLY from the OS environment variable OPENROUTER_API_KEY —
 # never put the literal key in this file (public repo!).
 # raw-agent appends /chat/completions itself, so base-url must include /v1.
+#
+# MODEL IS AN ENV VAR WITH A DEFAULT. On 2026-09-02 one orchestrator run took
+# 47 s and a raw-agent call 8 s on gpt-4o-mini — OpenRouter latency, not code.
+# If that happens on stage, `set OPENROUTER_MODEL=<other model>` and restart;
+# no rebuild. The same variable is honoured by all seven agent modules.
 spring:
   config:
     activate:
@@ -85,6 +79,6 @@ raw-agent:
   openai:
     base-url: https://openrouter.ai/api/v1
     api-key: ${OPENROUTER_API_KEY}
-    model: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
+    model: ${OPENROUTER_MODEL:openai/gpt-4o-mini}   # vendor prefix required on OpenRouter
     temperature: 0.3
     timeout-seconds: 60

@@ -25,23 +25,25 @@
             <groupId>org.springframework</groupId>
             <artifactId>spring-context</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.datatype</groupId>
-            <artifactId>jackson-datatype-jsr310</artifactId>
-        </dependency>
+        <!--
+            NO JACKSON HERE ANY MORE. The module used to declare Jackson 2
+            databind + jsr310, a leftover from Boot 3: nothing in `common`
+            imports com.fasterxml.jackson.databind (verified by search), and the
+            annotations consumers use (@JsonFormat in mcp-server, @JsonProperty
+            in raw-agent) come from jackson-annotations, which every consumer
+            already gets through spring-boot-starter-web - on Boot 4 in the
+            Jackson 3 flavour. Declaring Jackson 2 databind here only put a
+            second databind on every module's classpath.
+        -->
         <dependency>
             <groupId>jakarta.validation</groupId>
             <artifactId>jakarta.validation-api</artifactId>
         </dependency>
 
-        <!-- ── Observability auto-configuration ─────────────────────────
+        <!-- Observability auto-configuration.
              Marked optional: consumers already bring these transitively
              (spring-boot-starter-web + actuator + micrometer from parent).
-             The auto-config activates only in servlet web apps.        -->
+             The auto-config activates only in servlet web apps. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>
@@ -61,17 +63,17 @@
              transitively. Needed at compile time because
              ServerRequestObservationContext#getCarrier() returns
              HttpServletRequest. Scope provided: at runtime embedded Tomcat
-             (spring-boot-starter-web) supplies it in every consumer.    -->
+             (spring-boot-starter-web) supplies it in every consumer. -->
         <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
             <scope>provided</scope>
         </dependency>
 
-        <!-- ── Logback -> OpenTelemetry logs bridge ─────────────────────
+        <!-- Logback -> OpenTelemetry logs bridge.
              NOT optional, and NOT transitive by accident: this is the one
              piece that makes application logs reach Loki, and it is placed
-             here so all nine modules inherit it from a single declaration.
+             here so all modules inherit it from a single declaration.
 
              Spring Boot 4 auto-configures the logging SDK and its OTLP
              exporter, but does NOT connect Logback to it. Two things are
@@ -79,32 +81,32 @@
                logback-spring.xml                 declares the appender
                OtelLoggingBridgeAutoConfiguration arms it via install()
              Skip either and the endpoint still binds, the SDK still starts,
-             and not a single line reaches Loki — with no error anywhere.
+             and not a single line reaches Loki - with no error anywhere.
 
              Version pinned in the parent: Boot manages opentelemetry-bom but
-             not the io.opentelemetry.instrumentation group.               -->
+             not the io.opentelemetry.instrumentation group. -->
         <dependency>
             <groupId>io.opentelemetry.instrumentation</groupId>
             <artifactId>opentelemetry-logback-appender-1.0</artifactId>
         </dependency>
-        <!-- OpenTelemetry API — for the OpenTelemetry bean injected by the
+        <!-- OpenTelemetry API - for the OpenTelemetry bean injected by the
              bridge auto-configuration. Optional: every consumer already has
-             it through spring-boot-starter-opentelemetry (parent).        -->
+             it through spring-boot-starter-opentelemetry (parent). -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-api</artifactId>
             <optional>true</optional>
         </dependency>
 
-        <!-- LangChain4j — ONLY for the GenAI metrics/tracing listener and the
+        <!-- LangChain4j - ONLY for the GenAI metrics/tracing listener and the
              TracingToolProvider decorator. Both are OPTIONAL dependencies:
              the auto-config activates via @ConditionalOnClass exclusively in
              modules that already ship LangChain4j; Spring AI and raw modules
              never see these classes.
-             langchain4j-core → ChatModelListener (metrics/spans listener)
-             langchain4j      → ToolProvider / ToolExecutor / ToolSpecifications
-                                (dev.langchain4j.service.tool lives here, not in core)
-             Versions managed by langchain4j-bom (parent).                -->
+             langchain4j-core -> ChatModelListener (metrics/spans listener)
+             langchain4j      -> ToolProvider / ToolExecutor / ToolSpecifications
+                                 (dev.langchain4j.service.tool lives here, not in core)
+             Versions managed by langchain4j-bom (parent). -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-core</artifactId>
@@ -115,14 +117,16 @@
             <artifactId>langchain4j</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- micrometer-core: MeterRegistry for the LC4j listener, McpToolTelemetry
+             and the histogram MeterFilter in ObservabilityAutoConfiguration. -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
             <optional>true</optional>
         </dependency>
-        <!-- Tracer API for manual "chat <model>" spans in the LC4j listener.
+        <!-- Tracer API for manual "chat <model>" / "mcp_tool <name>" spans.
              Consumers get the implementation from micrometer-tracing-bridge-otel
-             (parent); optional here for the same reason as the rest.     -->
+             (parent); optional here for the same reason as the rest. -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-tracing</artifactId>

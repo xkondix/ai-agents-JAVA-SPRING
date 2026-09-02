@@ -1,16 +1,22 @@
 package com.xkondix.common.observability;
 
 import dev.langchain4j.model.chat.listener.ChatModelListener;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.Tracer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
+
+import java.util.List;
 
 /**
  * Registers the GenAI metrics/tracing listener in modules that ship LangChain4j.
@@ -80,6 +86,26 @@ import org.springframework.context.annotation.Bean;
  * is ever what this bean ends up with, the metrics silently vanish while every
  * log line looks healthy. The pre-demo check is: the [OBSERVABILITY] line must
  * say CompositeMeterRegistry, and there must be no WARN right after it.
+ *
+ * ── METERS PRE-REGISTERED AT ZERO ──────────────────────────────────────────
+ *
+ * Micrometer creates a meter on first use, so the token counter of a fresh
+ * process is born on the first LLM call already holding e.g. 151 — the first
+ * value Prometheus ever sees. rate()/increase() measure CHANGE, so that first
+ * request is invisible on every rate panel and counts as $0 on the cost panel
+ * (observed 2026-09-02: "Modules with LLM metrics: 2" out of 7 after a round
+ * of restarts). The ApplicationRunner below registers the counters and the
+ * success timer at 0 on startup, so the first push carries a zero and the
+ * first increment is a real increase.
+ *
+ * The listener itself does not know the model until the first call, so the
+ * name is read from the LangChain4j starter properties of whichever provider
+ * the active profile configured. It MUST equal the model name the listener
+ * later tags with (ChatResponseMetadata.modelName(), falling back to the
+ * requested name) — for OpenRouter and Ollama it does; a provider that
+ * answers with a different model id than it was asked for would leave the
+ * pre-registered series at 0 and start a second one. Nothing breaks in that
+ * case, the first request is merely invisible again.
  */
 @AutoConfiguration
 @ConditionalOnClass({ChatModelListener.class, MeterRegistry.class})
@@ -88,6 +114,13 @@ public class Lc4jGenAiMetricsAutoConfiguration {
 
     private static final Logger log =
             LoggerFactory.getLogger(Lc4jGenAiMetricsAutoConfiguration.class);
+
+    private static final String FRAMEWORK = "langchain4j";
+
+    /** Model-name properties of the LangChain4j starters, in lookup order. */
+    private static final List<String> MODEL_PROPERTIES = List.of(
+            "langchain4j.open-ai.chat-model.model-name",
+            "langchain4j.ollama.chat-model.model-name");
 
     @Bean
     ChatModelListener genAiMetricsChatModelListener(ObjectProvider<MeterRegistry> registryProvider,
@@ -116,5 +149,48 @@ public class Lc4jGenAiMetricsAutoConfiguration {
                 contentProperties.maxContentLength());
 
         return new GenAiMetricsChatModelListener(registry, tracer, contentProperties);
+    }
+
+    /**
+     * Pre-registers the token counters and the success timer at 0 — see the
+     * class comment. Runs after the context is up, so the registry is the real
+     * (composite) one. Tags mirror GenAiMetricsChatModelListener exactly.
+     */
+    @Bean
+    ApplicationRunner lc4jGenAiMeterWarmup(ObjectProvider<MeterRegistry> registryProvider,
+                                           Environment environment) {
+        return args -> {
+            MeterRegistry registry = registryProvider.getIfAvailable();
+            String model = MODEL_PROPERTIES.stream()
+                    .map(environment::getProperty)
+                    .filter(v -> v != null && !v.isBlank())
+                    .findFirst()
+                    .orElse(null);
+            if (registry == null || model == null) {
+                log.info("[OBSERVABILITY] LangChain4j meters NOT pre-registered "
+                        + "(registry={}, model={}) — the first request after startup will be "
+                        + "invisible to rate() panels; send a warm-up request",
+                        registry != null, model);
+                return;
+            }
+            for (String type : List.of("input", "output", "total")) {
+                Counter.builder("gen.ai.client.token.usage")
+                        .description("Token usage per LLM call (LangChain4j)")
+                        .tag("gen_ai.operation.name", "chat")
+                        .tag("gen_ai.request.model", model)
+                        .tag("gen_ai.token.type", type)
+                        .tag("framework", FRAMEWORK)
+                        .register(registry);
+            }
+            Timer.builder("gen.ai.client.operation")
+                    .description("Duration of a single LLM call (LangChain4j)")
+                    .tag("gen_ai.operation.name", "chat")
+                    .tag("gen_ai.request.model", model)
+                    .tag("framework", FRAMEWORK)
+                    .tag("error", "none")
+                    .register(registry);
+            log.info("[OBSERVABILITY] LangChain4j meters pre-registered at 0 for model={} "
+                    + "(gen.ai.client.token.usage, gen.ai.client.operation)", model);
+        };
     }
 }

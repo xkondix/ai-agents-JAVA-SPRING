@@ -20,7 +20,6 @@ lc4j:
 # LC4j counterpart of spring.ai.chat.observations.log-prompt/log-completion.
 # Spring AI writes the content to LOG lines (Loki), this listener puts it on
 # the "chat <model>" SPAN as gen_ai.prompt / gen_ai.completion (Tempo).
-# Off by default in `common`; on here so both MCP orchestrators are comparable.
 xkondix:
   observability:
     genai:
@@ -29,16 +28,8 @@ xkondix:
       max-content-length: 4000
 
 # ── Observability ─────────────────────────────────────────────────────────
-# Three signals, one port. Boot 4 property layout:
-#   traces  : management.opentelemetry.tracing.export.otlp.endpoint
-#             (Boot 3 spelling was management.otlp.tracing.endpoint — DEAD)
-#   logs    : management.opentelemetry.logging.export.otlp.endpoint
-#   metrics : management.otlp.metrics.export.url  (Micrometer OtlpMeterRegistry,
-#             not the OTel SDK — hence the deliberately different prefix)
-#
-# Logs additionally need the Logback->OTel bridge from `common`
-# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration). Miss it and Loki
-# stays empty with no error anywhere.
+# Three signals to localhost:4318; property layout, the Logback->OTel bridge
+# and every silent failure found so far are documented in OBSERVABILITY.md.
 #
 # Worth knowing what this module is SUPPOSED to look like in Tempo: unlike
 # spring-ai-agent-mcp, trace propagation over MCP was deliberately NOT
@@ -93,9 +84,8 @@ langchain4j:
 ---
 # ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
 # API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
-# LangChain4j needs the /v1 suffix in base-url. Since Spring AI 2.0 moved to
-# the official OpenAI SDK and dropped completions-path, the Spring AI modules
-# now need it too — so all seven modules finally agree on this URL.
+# Model: OPENROUTER_MODEL env var with a default — one switch for all seven
+# agents when OpenRouter latency spikes on the day (see raw-agent yml).
 spring:
   config:
     activate:
@@ -106,7 +96,7 @@ langchain4j:
     chat-model:
       base-url: https://openrouter.ai/api/v1
       api-key: ${OPENROUTER_API_KEY}
-      model-name: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
+      model-name: ${OPENROUTER_MODEL:openai/gpt-4o-mini}   # vendor prefix required on OpenRouter
       temperature: 0.3
       log-requests: true    # LC4j masks the Authorization header in logs
       log-responses: true

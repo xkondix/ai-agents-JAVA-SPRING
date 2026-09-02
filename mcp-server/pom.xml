@@ -14,22 +14,29 @@
     <artifactId>mcp-server</artifactId>
     <name>MCP Server - Spring Boot MCP tools provider</name>
     <description>
-        Standalone Spring Boot application that exposes tools via MCP protocol.
-        Both LangChain4j and Spring AI agents connect to this server as an
-        external tool provider via HTTP/SSE or Streamable HTTP.
+        Standalone Spring Boot application that exposes tools via MCP protocol
+        over Streamable HTTP (POST /mcp, Spring AI 2.0 default). Both the
+        LangChain4j and the Spring AI agent connect to it as an external tool
+        provider.
 
-        Tools exposed:
+        Tools exposed (all wrapped by McpToolTelemetry from `common`:
+        SERVER span "mcp_tool NAME" + mcp.tool.* meters):
         - get_game_stats  : fetch game statistics
-        - save_note       : save a note to the knowledge base
-        - search_notes    : search notes in the knowledge base
         - get_weather     : mock weather tool (demo)
+        - search_notes    : search notes in the knowledge base
+        - save_note       : save a note - requires human approval
+        - delete_note     : delete a note - requires human approval
 
         Port: 8081
 
-        Spring AI 1.1.4 notes:
-          - Use spring-ai-starter-mcp-server-webmvc (NOT io.modelcontextprotocol.sdk:mcp-spring-webmvc)
-          - The low-level mcp-spring-webmvc is a transitive dependency managed by Spring AI BOM
-          - Do NOT declare mcp-spring-webmvc or mcp-bom explicitly
+        Spring AI 2.0 notes:
+          - Tools are @McpTool methods discovered by the annotation scanner;
+            @Tool + MethodToolCallbackProvider is the AGENT-side API now.
+          - Use spring-ai-starter-mcp-server-webmvc; the low-level
+            mcp-spring-webmvc and the MCP SDK version come transitively from
+            the Spring AI BOM. Do NOT declare mcp-spring-webmvc or mcp-bom.
+          - protocol: STREAMABLE (application.yml); SSE is deprecated for
+            removal in 2.0 and is not served.
     </description>
 
     <dependencies>
@@ -42,7 +49,6 @@
 
         <!--
             Spring AI MCP Server WebMVC starter.
-            This is the correct Spring AI 1.1.x way to expose MCP tools via HTTP.
             Transitively provides mcp-spring-webmvc at the correct version (managed by BOM).
             Do NOT use io.modelcontextprotocol.sdk:mcp-spring-webmvc directly.
         -->
@@ -51,7 +57,7 @@
             <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
         </dependency>
 
-        <!-- Actuator for health checks -->
+        <!-- Actuator for health checks and management endpoints -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
@@ -63,7 +69,7 @@
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         </dependency>
 
-        <!-- Common DTOs -->
+        <!-- Common: approval flow, DTOs, McpToolTelemetry, observability auto-config -->
         <dependency>
             <groupId>com.xkondix</groupId>
             <artifactId>common</artifactId>

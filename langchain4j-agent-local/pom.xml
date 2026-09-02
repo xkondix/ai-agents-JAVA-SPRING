@@ -12,14 +12,20 @@
     </parent>
 
     <artifactId>langchain4j-agent-local</artifactId>
-    <name>LangChain4j Agent Local - Raw loop + AiServices + Memory</name>
+    <name>LangChain4j Agent Local - Raw loop + AiServices</name>
     <description>
         Demonstrates the agent loop concept using LangChain4j
         with LOCAL tools (@Tool annotation, same process).
 
         1. RAW LOOP    - manual while-loop without any framework abstractions.
-        2. AI SERVICES - declarative @Tool + AiServices (annotation approach)
-        3. MEMORY      - temporary (MessageWindow) and permanent (Redis)
+        2. AI SERVICES - declarative @Tool + AiServices (annotation approach),
+                         in-memory MessageWindowChatMemory keyed by userId.
+
+        Persistent (Redis) memory is NOT part of this module today: the
+        langchain4j-community Redis starter is kept commented out below until
+        a spring-boot4 variant is confirmed, and the former spring.data.redis
+        properties were removed from application.yml because they bound to
+        nothing.
 
         Port: 8082
     </description>
@@ -42,7 +48,7 @@
             <artifactId>langchain4j-core</artifactId>
         </dependency>
 
-        <!-- ── STARTERS: the spring-boot4 family, not spring-boot ───────
+        <!-- STARTERS: the spring-boot4 family, not spring-boot.
              LangChain4j ships two parallel starter families at the SAME
              version, told apart only by artifactId:
                langchain4j-*-spring-boot-starter   -> Spring Boot 3.5+
@@ -55,7 +61,7 @@
              org.springframework.boot.autoconfigure.web.client.RestClientAutoConfiguration
              -> org.springframework.boot.restclient.autoconfigure.RestClientAutoConfiguration),
              which fails with IllegalStateException: Failed to generate bean
-             name for imported class. The symptom is loud but misleading — it
+             name for imported class. The symptom is loud but misleading - it
              looks like a bean problem and is a starter-version problem. -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
@@ -66,7 +72,7 @@
             <artifactId>langchain4j-ollama-spring-boot4-starter</artifactId>
         </dependency>
 
-        <!-- OpenAI-compatible starter — used by the "openrouter" Spring
+        <!-- OpenAI-compatible starter - used by the "openrouter" Spring
              profile (langchain4j.open-ai.* properties). Property-driven:
              with the "local" profile no open-ai properties exist, so no
              OpenAI model bean is created and no API key is required. -->
@@ -76,9 +82,11 @@
         </dependency>
 
         <!--
-            Redis chat memory — moved to langchain4j-community in LangChain4j 1.x
-            To restore: use langchain4j-community-redis-spring-boot-starter:1.0.0-beta5
-            (on Boot 4, first check whether community ships a spring-boot4 variant)
+            Redis chat memory - moved to langchain4j-community in LangChain4j 1.x.
+            Not wired in. To restore: check whether langchain4j-community ships a
+            -spring-boot4- starter for Redis, add it here together with
+            spring-boot-starter-data-redis, and bring spring.data.redis.* back to
+            application.yml (docker-compose has Redis behind - -profile extras).
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-community-redis-spring-boot-starter</artifactId>
@@ -90,8 +98,7 @@
         </dependency>
         -->
 
-        <!-- Actuator: endpoints AND the condition that enables OTLP log export
-             (ConditionalOnEnabledLoggingExport). Do not remove. -->
+        <!-- Actuator: management endpoints (health is polled by the chat-ui). -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
