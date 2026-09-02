@@ -1,6 +1,15 @@
 services:
 
-  # Local LLM server
+  # ─────────────────────────────────────────────────────────────────────────
+  # DEFAULT PROFILE: what a demo needs — the LGTM stack and (optionally) Ollama.
+  #   docker compose up -d                 -> lgtm + ollama
+  #   docker compose --profile extras up   -> also redis, chroma, jira
+  # The extras are reserved for later parts (RAG, memory, integrations) and
+  # are not used by any module today; keeping them out of the default `up`
+  # saves a Jira boot (minutes, GBs) on a conference laptop.
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # Local LLM server (used by the `local` Spring profile only)
   ollama:
     image: ollama/ollama
     container_name: ollama
@@ -10,53 +19,16 @@ services:
     volumes:
       - ollama:/root/.ollama
 
-  # Chat memory (persistent)
-  redis:
-    image: redis:latest
-    container_name: redis
-    ports:
-      - "6379:6379"
-    restart: unless-stopped
-
-  # Vector store (RAG)
-  chroma:
-    image: ghcr.io/chroma-core/chroma:0.6.4.dev226
-    container_name: chroma
-    ports:
-      - "8000:8000"
-
-  # Jira — local instance for integration demos (Presentation 2)
-  jira-db:
-    image: postgres:15
-    container_name: jira-db
-    environment:
-      POSTGRES_DB: jira
-      POSTGRES_USER: jira
-      POSTGRES_PASSWORD: jira
-    volumes:
-      - jira-db-data:/var/lib/postgresql/data
-    restart: unless-stopped
-
-  jira:
-    image: atlassian/jira-software:latest
-    container_name: jira
-    ports:
-      - "8080:8080"
-    environment:
-      ATL_JDBC_URL: jdbc:postgresql://jira-db:5432/jira
-      ATL_JDBC_USER: jira
-      ATL_JDBC_PASSWORD: jira
-      ATL_DB_DRIVER: org.postgresql.Driver
-    volumes:
-      - jira-data:/var/atlassian/application-data/jira
-    depends_on:
-      - jira-db
-    restart: unless-stopped
-
   # Observability stack — Grafana LGTM (Presentation 3)
   # Loki (logs) + Grafana (dashboards) + Tempo (traces) + Prometheus (metrics)
   grafana-lgtm:
-    image: grafana/otel-lgtm:latest
+    # PINNED, NOT :latest. The provisioning mounts below REPLACE what the image
+    # ships, so a silent `latest` bump (new Grafana major, moved provisioning
+    # paths, changed datasource schema) can make dashboards or datasources
+    # vanish with no error — the worst possible moment for that is on stage.
+    # 0.32.0 is the release current on 2026-09-02 (github.com/grafana/docker-otel-lgtm/releases).
+    # Bump deliberately, then re-check the dashboard and the Tempo->Loki jump.
+    image: grafana/otel-lgtm:0.32.0
     container_name: lgtm
     ports:
       - "3100:3000"   # Grafana UI     → http://localhost:3100 (admin/admin)
@@ -65,6 +37,15 @@ services:
       - "9090:9090"   # Prometheus     → http://localhost:9090
       - "3201:3200"   # Tempo          → http://localhost:3201
       - "4040:4040"   # Pyroscope      → profiling
+    environment:
+      # Open Grafana straight on the project dashboard — one click less on
+      # stage, and the "Demo readiness" row is the first thing on screen.
+      # The path is the provisioned JSON inside the container (README,
+      # "Add custom dashboards").
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/grafana/conf/provisioning/dashboards/ai-agents-observability.json
+      # Keep a week of metrics so rehearsal runs stay comparable with the
+      # real thing (README, "Customize backend configuration").
+      PROMETHEUS_EXTRA_ARGS: "--storage.tsdb.retention.time=7d"
     volumes:
       # Provisioned dashboards — dashboards clicked together in the UI live
       # only in the container's SQLite and vanish on recreate; anything
@@ -82,9 +63,68 @@ services:
       # Prometheus, Tempo, Loki and Pyroscope. A missing entry does not fall
       # back to the image default; the datasource simply disappears.
       - ./grafana/provisioning/datasources:/otel-lgtm/grafana/conf/provisioning/datasources
+
+      # DATA SURVIVES A RECREATE. Every backend in the image writes under
+      # /data (README, "Persist data across container instantiation"), so a
+      # single named volume keeps Prometheus series, Tempo traces, Loki logs
+      # and Grafana's own SQLite across `docker compose up --force-recreate`.
+      # Before this line existed, every recreate — including the one needed
+      # to apply a datasource change — wiped the whole rehearsal history.
+      # To start clean on purpose: docker compose down -v.
+      - lgtm-data:/data
+    restart: unless-stopped
+
+  # ── extras (profile) ──────────────────────────────────────────────────────
+
+  # Chat memory (persistent) — reserved; no module uses it yet
+  redis:
+    image: redis:7
+    container_name: redis
+    profiles: [extras]
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # Vector store (RAG) — reserved
+  chroma:
+    image: ghcr.io/chroma-core/chroma:0.6.4.dev226
+    container_name: chroma
+    profiles: [extras]
+    ports:
+      - "8000:8000"
+
+  # Jira — local instance for integration demos (Presentation 2)
+  jira-db:
+    image: postgres:15
+    container_name: jira-db
+    profiles: [extras]
+    environment:
+      POSTGRES_DB: jira
+      POSTGRES_USER: jira
+      POSTGRES_PASSWORD: jira
+    volumes:
+      - jira-db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  jira:
+    image: atlassian/jira-software:latest
+    container_name: jira
+    profiles: [extras]
+    ports:
+      - "8080:8080"
+    environment:
+      ATL_JDBC_URL: jdbc:postgresql://jira-db:5432/jira
+      ATL_JDBC_USER: jira
+      ATL_JDBC_PASSWORD: jira
+      ATL_DB_DRIVER: org.postgresql.Driver
+    volumes:
+      - jira-data:/var/atlassian/application-data/jira
+    depends_on:
+      - jira-db
     restart: unless-stopped
 
 volumes:
   ollama:
+  lgtm-data:
   jira-data:
   jira-db-data:

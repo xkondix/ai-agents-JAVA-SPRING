@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
  * Spring AI MCP Client configuration.
  *
  * MCP clients and the ToolCallbackProvider are AUTOCONFIGURED from
- * application.yml (spring.ai.mcp.client.sse.connections.*).
+ * application.yml (spring.ai.mcp.client.streamable-http.connections.*).
  *
  * LESSON LEARNED (this cost us an evening):
  * A previous version declared its own bean named "mcpToolCallbacks"
@@ -23,7 +23,9 @@ import org.springframework.context.annotation.Configuration;
  * zero tools (input_tokens in the trace exposed it: too small to contain
  * tool definitions).
  *
- * So: no competing bean here. We only log what the autoconfiguration
+ * So: no competing bean here, and the overriding flag is gone from
+ * application.yml — a future collision now fails the context at startup
+ * instead of logging one INFO line. We only log what the autoconfiguration
  * discovered, so a broken MCP connection is visible at startup.
  */
 @Slf4j
@@ -39,8 +41,8 @@ public class McpClientConfig {
                 log.info("  - tool: {}", tool.getToolDefinition().name());
             }
             if (tools.length == 0) {
-                log.warn("ZERO MCP tools discovered — check that mcp-server is up "
-                        + "and spring.ai.mcp.client.sse.connections is correct!");
+                log.warn("ZERO MCP tools discovered — check that mcp-server (8081) is up "
+                        + "and spring.ai.mcp.client.streamable-http.connections is correct!");
             }
         };
     }

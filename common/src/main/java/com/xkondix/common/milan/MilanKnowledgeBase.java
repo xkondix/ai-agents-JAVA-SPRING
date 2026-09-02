@@ -12,6 +12,15 @@ import java.util.Map;
  * each module wrap this class with the framework-specific @Tool annotations.
  *
  * Data is illustrative (real names, simplified numbers).
+ *
+ * SQUADS ARE COMPLETE ON PURPOSE. The first version listed 8 players for
+ * 2007 and 7 for 2024 — no full-backs, one striker. The evaluator-optimizer
+ * pattern asks for "a starting XI using only listed players", which was
+ * therefore impossible: both frameworks filled the gaps with hallucinated
+ * (if historically correct) names and the scorer waved them through. A loop
+ * whose exit condition cannot be met by honest output demonstrates nothing.
+ * Each season now has a full XI plus a bench, so "only listed players" is
+ * satisfiable and a proposal with an outsider is a real defect to catch.
  */
 public final class MilanKnowledgeBase {
 
@@ -28,22 +37,45 @@ public final class MilanKnowledgeBase {
 
     private static final Map<Integer, List<Player>> SQUADS = Map.of(
             2007, List.of(
+                    // Athens 2007 XI (4-3-2-1)
                     new Player("Dida", "GK", 1, 7.4),
-                    new Player("Paolo Maldini", "CB", 3, 8.8),
+                    new Player("Massimo Oddo", "RB", 44, 7.6),
                     new Player("Alessandro Nesta", "CB", 13, 8.6),
+                    new Player("Paolo Maldini", "CB", 3, 8.8),
+                    new Player("Marek Jankulovski", "LB", 18, 7.5),
                     new Player("Gennaro Gattuso", "CM", 8, 8.2),
                     new Player("Andrea Pirlo", "CM", 21, 9.0),
-                    new Player("Clarence Seedorf", "CM", 10, 8.5),
+                    new Player("Massimo Ambrosini", "CM", 23, 7.7),
+                    new Player("Clarence Seedorf", "AM", 10, 8.5),
                     new Player("Kaka", "AM", 22, 9.4),
-                    new Player("Filippo Inzaghi", "ST", 9, 8.7)),
+                    new Player("Filippo Inzaghi", "ST", 9, 8.7),
+                    // bench
+                    new Player("Zeljko Kalac", "GK", 16, 6.9),
+                    new Player("Cafu", "RB", 2, 7.8),
+                    new Player("Kakha Kaladze", "CB", 4, 7.4),
+                    new Player("Giuseppe Favalli", "LB", 5, 7.0),
+                    new Player("Cristian Brocchi", "CM", 20, 7.0),
+                    new Player("Alberto Gilardino", "ST", 11, 7.9)),
             2024, List.of(
+                    // 2024 XI (4-3-3)
                     new Player("Mike Maignan", "GK", 16, 8.4),
-                    new Player("Theo Hernandez", "LB", 19, 8.3),
+                    new Player("Davide Calabria", "RB", 2, 7.3),
                     new Player("Fikayo Tomori", "CB", 23, 7.8),
+                    new Player("Malick Thiaw", "CB", 28, 7.4),
+                    new Player("Theo Hernandez", "LB", 19, 8.3),
+                    new Player("Youssouf Fofana", "CM", 29, 7.5),
                     new Player("Tijjani Reijnders", "CM", 14, 8.1),
+                    new Player("Ruben Loftus-Cheek", "CM", 8, 7.4),
                     new Player("Christian Pulisic", "RW", 11, 8.2),
                     new Player("Rafael Leao", "LW", 10, 8.5),
-                    new Player("Alvaro Morata", "ST", 7, 7.6)));
+                    new Player("Alvaro Morata", "ST", 7, 7.6),
+                    // bench
+                    new Player("Marco Sportiello", "GK", 57, 6.8),
+                    new Player("Emerson Royal", "RB", 22, 6.9),
+                    new Player("Matteo Gabbia", "CB", 46, 7.2),
+                    new Player("Yunus Musah", "CM", 80, 7.0),
+                    new Player("Samuel Chukwueze", "RW", 21, 7.1),
+                    new Player("Tammy Abraham", "ST", 90, 7.2)));
 
     private static final List<Transfer> TRANSFERS = List.of(
             new Transfer("Kaka", "Sao Paulo", "AC Milan", 8.5, "2003 summer"),

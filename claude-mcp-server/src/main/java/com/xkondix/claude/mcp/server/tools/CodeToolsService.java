@@ -45,12 +45,24 @@ import org.springframework.stereotype.Service;
  * external client we do not control. It sends no traceparent, so every call
  * forms its own trace (Tempo shows one-span traces with Services: 1; that is
  * correct, not a propagation bug).
+ *
+ * THIS LOGIC IS DUPLICATED ON PURPOSE. The same wrapper lives in
+ * common/observability/McpToolTelemetry and is used by mcp-server; this module
+ * sits outside the reactor and does not depend on `common`, so it keeps its
+ * own copy. Span name, tag names and meter names MUST stay identical in both
+ * places — the Grafana panels are shared.
  */
 @Slf4j
 @Service
 public class CodeToolsService {
 
-    private static final String FRAMEWORK = "spring-ai-mcp-server";
+    /**
+     * The instrumentation FAMILY, same value as the Spring AI agent modules
+     * and mcp-server. It used to be "spring-ai-mcp-server", which mixed two
+     * dimensions into one label (framework + role); the role is already carried
+     * by service.name / job, so the tag now names only the framework.
+     */
+    private static final String FRAMEWORK = "spring-ai";
 
     /** Payload directions, mirroring gen_ai_token_type=input|output on the agent panels. */
     private static final String REQUEST = "request";
@@ -86,6 +98,9 @@ public class CodeToolsService {
      * Meters are recorded unconditionally, so a no-op sink removes a null check
      * from every call path — whereas the span branch stays explicit because
      * "no tracing" changes the shape of the code, not just its destination.
+     *
+     * The fallback is logged at WARN: a SimpleMeterRegistry exports nothing,
+     * and without the log line that is indistinguishable from "working".
      */
     private final MeterRegistry meterRegistry;
 
@@ -94,7 +109,13 @@ public class CodeToolsService {
                             ObjectProvider<MeterRegistry> meterRegistryProvider) {
         this.fileService = fileService;
         this.tracer = tracerProvider.getIfAvailable();
-        this.meterRegistry = meterRegistryProvider.getIfAvailable(SimpleMeterRegistry::new);
+        MeterRegistry registry = meterRegistryProvider.getIfAvailable();
+        if (registry == null) {
+            log.warn("No MeterRegistry bean available — mcp_tool_* metrics will NOT be exported "
+                    + "(in-memory SimpleMeterRegistry fallback)");
+            registry = new SimpleMeterRegistry();
+        }
+        this.meterRegistry = registry;
         if (this.tracer == null) {
             log.warn("No Tracer bean available — mcp_tool spans are DISABLED, tools still work");
         }
@@ -190,7 +211,8 @@ public class CodeToolsService {
     }
 
     @McpTool(name = "move_file",
-            description = "Move or rename a file. For directories use move_directory.")
+            description = "Move or rename a file. For directories use move_directory. "
+            + "Both paths must have an allowed extension.")
     public String move_file(
             @McpToolParam(description = "Source relative path", required = true)
             String from_path,
@@ -203,7 +225,7 @@ public class CodeToolsService {
 
     @McpTool(name = "move_directory",
             description = "Move or rename a directory, recursively. "
-            + "For files use move_file.")
+            + "For files use move_file. Ignored directories (.git, target, ...) cannot be moved.")
     public String move_directory(
             @McpToolParam(description = "Source relative directory path", required = true)
             String from_path,
@@ -218,7 +240,8 @@ public class CodeToolsService {
 
     @McpTool(name = "delete_file",
             description = "THIS ACTION CANNOT BE UNDONE. Permanently delete a file. "
-            + "The confirm parameter must be exactly the string: DELETE",
+            + "The confirm parameter must be exactly the string: DELETE. "
+            + "Restricted to allowed extensions.",
             annotations = @McpTool.McpAnnotations(destructiveHint = true))
     public String delete_file(
             @McpToolParam(description = "Relative path to the file to delete", required = true)

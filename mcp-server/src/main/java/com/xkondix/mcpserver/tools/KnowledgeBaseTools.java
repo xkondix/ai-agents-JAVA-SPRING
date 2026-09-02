@@ -1,5 +1,6 @@
 package com.xkondix.mcpserver.tools;
 
+import com.xkondix.common.observability.McpToolTelemetry;
 import com.xkondix.mcpserver.approval.ApprovalService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,8 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
+import static com.xkondix.common.observability.McpToolTelemetry.len;
 
 /**
  * Knowledge base tools exposed via MCP.
@@ -40,6 +43,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * request runs on a virtual thread, so pending approvals park cheaply instead
  * of exhausting a platform-thread pool.
  *
+ * OBSERVABILITY: the McpToolTelemetry span wraps the WHOLE call, including the
+ * time spent waiting for the human — so an approval-gated tool shows up in
+ * Tempo as one long "mcp_tool save_note" span. That is the point: the wait is
+ * part of the tool's latency as the agent experiences it.
+ *
  * The destructiveHint below is not decoration — MCP clients use those hints to
  * decide which calls to surface for confirmation, which is exactly the same
  * intent the approval gate enforces server-side.
@@ -50,6 +58,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class KnowledgeBaseTools {
 
     private final ApprovalService approvalService;
+    private final McpToolTelemetry telemetry;
 
     // In-memory store — mock for demo purposes
     private final Map<String, String> notes = new ConcurrentHashMap<>();
@@ -65,19 +74,21 @@ public class KnowledgeBaseTools {
             String title,
             @McpToolParam(description = "Note content", required = true)
             String content) {
-        log.info("[MCP] save_note PENDING APPROVAL title={}", title);
+        return telemetry.traced("save_note", "title=" + title, len(title) + len(content), () -> {
+            log.info("[MCP] save_note PENDING APPROVAL title={}", title);
 
-        return approvalService.gate(
-                "SAVE_NOTE", "save_note",
-                "Save note: " + title,
-                "TITLE: " + title + "\nCONTENT:\n" + content,
-                () -> {
-                    String id = "note-" + Instant.now().toEpochMilli();
-                    notes.put(id, "[" + title + "] " + content);
-                    log.info("[MCP] save_note id={} title={}", id, title);
-                    return "Saved: " + id;
-                },
-                "REJECTED: Note was not saved.");
+            return approvalService.gate(
+                    "SAVE_NOTE", "save_note",
+                    "Save note: " + title,
+                    "TITLE: " + title + "\nCONTENT:\n" + content,
+                    () -> {
+                        String id = "note-" + Instant.now().toEpochMilli();
+                        notes.put(id, "[" + title + "] " + content);
+                        log.info("[MCP] save_note id={} title={}", id, title);
+                        return "Saved: " + id;
+                    },
+                    "REJECTED: Note was not saved.");
+        });
     }
 
     @McpTool(name = "delete_note", description = """
@@ -90,22 +101,24 @@ public class KnowledgeBaseTools {
     public String delete_note(
             @McpToolParam(description = "Note ID to delete", required = true)
             String id) {
-        log.info("[MCP] delete_note PENDING APPROVAL id={}", id);
+        return telemetry.traced("delete_note", "id=" + id, len(id), () -> {
+            log.info("[MCP] delete_note PENDING APPROVAL id={}", id);
 
-        if (!notes.containsKey(id)) {
-            return "ERROR: No note found with id: " + id;
-        }
+            if (!notes.containsKey(id)) {
+                return "ERROR: No note found with id: " + id;
+            }
 
-        return approvalService.gate(
-                "DELETE_NOTE", "delete_note",
-                "Delete note: " + id,
-                "ID: " + id + "\nCONTENT: " + notes.get(id),
-                () -> {
-                    notes.remove(id);
-                    log.info("[MCP] delete_note id={} deleted", id);
-                    return "Deleted: " + id;
-                },
-                "REJECTED: Note was not deleted.");
+            return approvalService.gate(
+                    "DELETE_NOTE", "delete_note",
+                    "Delete note: " + id,
+                    "ID: " + id + "\nCONTENT: " + notes.get(id),
+                    () -> {
+                        notes.remove(id);
+                        log.info("[MCP] delete_note id={} deleted", id);
+                        return "Deleted: " + id;
+                    },
+                    "REJECTED: Note was not deleted.");
+        });
     }
 
     @McpTool(name = "search_notes", description = """
@@ -117,11 +130,13 @@ public class KnowledgeBaseTools {
     public String search_notes(
             @McpToolParam(description = "Search keyword", required = true)
             String query) {
-        log.info("[MCP] search_notes query={}", query);
-        String result = notes.entrySet().stream()
-                .filter(e -> e.getValue().toLowerCase().contains(query.toLowerCase()))
-                .map(e -> e.getKey() + ": " + e.getValue())
-                .reduce("", (a, b) -> a + "\n" + b);
-        return result.isBlank() ? "No notes found for: " + query : result.trim();
+        return telemetry.traced("search_notes", "query=" + query, len(query), () -> {
+            log.info("[MCP] search_notes query={}", query);
+            String result = notes.entrySet().stream()
+                    .filter(e -> e.getValue().toLowerCase().contains(query.toLowerCase()))
+                    .map(e -> e.getKey() + ": " + e.getValue())
+                    .reduce("", (a, b) -> a + "\n" + b);
+            return result.isBlank() ? "No notes found for: " + query : result.trim();
+        });
     }
 }

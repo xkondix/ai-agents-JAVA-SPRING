@@ -7,8 +7,12 @@ spring:
     name: spring-ai-agent-mcp
   profiles:
     default: openrouter   # switch back to Ollama with --spring.profiles.active=local
-  main:
-    allow-bean-definition-overriding: true
+  # spring.main.allow-bean-definition-overriding is DELIBERATELY NOT SET.
+  # It used to be true, and it is the exact mechanism that once hid a broken
+  # tool registration: our "mcpToolCallbacks" bean was silently replaced by
+  # the auto-configured one and the model received zero tools (see
+  # McpClientConfig). With the flag off, a name collision fails the context
+  # loudly at startup — which is the behaviour a demo project wants.
   autoconfigure:
     # Chat provider is selected per profile via spring.ai.model.chat.
     # Only the non-chat OpenAI autoconfigurations stay excluded permanently.
@@ -19,19 +23,21 @@ spring:
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   ai:
-    # Spring AI 1.1+ — GenAI Semantic Conventions (OTel)
     chat:
       observations:
-        include-prompt: true
-        include-completion: true
+        # RENAMED IN SPRING AI 1.0.0-M8: include-prompt/include-completion ->
+        # log-prompt/log-completion; content goes to LOG lines, not spans.
+        # See OBSERVABILITY.md §3 #5.
+        log-prompt: true
+        log-completion: true
     mcp:
       client:
         enabled: true
         type: SYNC
         # ── TRANSPORT: STREAMABLE HTTP ────────────────────────────────────
         # Connections live under a TRANSPORT key, and that key must match the
-        # server. mcp-server (8081) now runs protocol: STREAMABLE, so this
-        # moved from `sse:` to `streamable-http:`.
+        # server. mcp-server (8081) runs protocol: STREAMABLE, so this is
+        # `streamable-http:`, not `sse:`.
         #
         # Shape verified in McpStreamableHttpClientProperties:
         #   prefix  spring.ai.mcp.client.streamable-http
@@ -58,28 +64,10 @@ spring:
         # so it is not reachable over HTTP and is not listed here.
 
 # ── Observability ─────────────────────────────────────────────────────────
-# SPRING BOOT 4 MOVED THE EXPORT PROPERTIES. All three signals, one port:
-#   traces  : management.opentelemetry.tracing.export.otlp.endpoint
-#             (Boot 3 spelling was management.otlp.tracing.endpoint — DEAD)
-#   logs    : management.opentelemetry.logging.export.otlp.endpoint
-#   metrics : management.otlp.metrics.export.url  (unchanged — that one belongs
-#             to the Micrometer OtlpMeterRegistry, not the OTel SDK, hence the
-#             deliberately different prefix)
-#
-# The LOGS line needs three things that Boot does NOT give you:
-#   1. spring-boot-starter-actuator on the classpath — its
-#      ConditionalOnEnabledLoggingExport is the FIRST condition of
-#      OtlpLoggingAutoConfiguration, so without it log export silently backs
-#      off while traces and metrics keep working
-#   2. the Logback appender + install() call — both live in `common`
-#      (logback-spring.xml + OtelLoggingBridgeAutoConfiguration)
-#   3. this endpoint
-# Miss any one of them and Loki stays empty with no error anywhere.
-#
+# Three signals to localhost:4318; property layout, the Logback->OTel bridge
+# and every silent failure found so far are documented in OBSERVABILITY.md.
 # This module is where the agent and mcp-server traces are joined into ONE
-# distributed trace, so getting the tracing endpoint wrong hurts most here:
-# spans would still be created and correlated in-process but never exported,
-# and the propagation demo would look broken while the code is fine.
+# distributed trace, so getting the tracing endpoint wrong hurts most here.
 management:
   endpoints:
     web:
@@ -127,19 +115,10 @@ spring:
 ---
 # ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
 # API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
-#
-# BASE-URL NOW INCLUDES /v1 — CHANGED IN SPRING AI 2.0.
-# The OpenAI model was rewritten on top of the official OpenAI Java SDK
-# (com.openai:openai-java-core), replacing the RestClient implementation:
-#
-#   Spring AI 1.x : base-url + completions-path
-#                   https://openrouter.ai/api  +  /v1/chat/completions
-#   Spring AI 2.0 : base-url handed to the SDK, which appends
-#                   /chat/completions itself
-#
-# completions-path no longer exists as a property, so /v1 belongs in base-url.
-# This module now matches LangChain4j and raw-agent instead of differing from
-# them — the old comment claiming otherwise was true for 1.x only.
+# BASE-URL INCLUDES /v1 — CHANGED IN SPRING AI 2.0 (official OpenAI SDK appends
+# /chat/completions itself; completions-path no longer exists).
+# Model: OPENROUTER_MODEL env var with a default — one switch for all seven
+# agents when OpenRouter latency spikes on the day (see raw-agent yml).
 spring:
   config:
     activate:
@@ -154,7 +133,5 @@ spring:
         options:
           # The .options infix SURVIVED for chat in 2.0 (OpenAiChatProperties
           # still nests an Options object under spring.ai.openai.chat).
-          # It was flattened only for embedding, image, audio, moderation
-          # and OCR — do not "fix" those by analogy with this block.
-          model: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
+          model: ${OPENROUTER_MODEL:openai/gpt-4o-mini}   # vendor prefix required on OpenRouter
           temperature: 0.3

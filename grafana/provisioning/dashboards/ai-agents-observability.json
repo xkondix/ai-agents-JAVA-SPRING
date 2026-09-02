@@ -7,6 +7,7 @@
   "timezone": "browser",
   "time": { "from": "now-1h", "to": "now" },
   "refresh": "10s",
+  "description": "Three instrumentation approaches (raw / LangChain4j / Spring AI) on one set of panels. CONVENTIONS: (1) every rate()/increase() query carries interval=1m \u2014 Micrometer PUSHES every 60 s and Grafana's default 15 s assumption makes $__rate_interval too narrow to hold two samples; (2) all timeseries use palette-classic-by-name so a module keeps its colour on every panel; (3) grouping is by job (service.name), never by the framework tag \u2014 Spring AI series carry no framework label; (4) no query uses a *_max series \u2014 Micrometer puts max into the OTLP histogram point, but the collector-to-Prometheus path only materialises _sum, _count and _bucket. KNOWN BLIND SPOT: Micrometer creates counters lazily on first use, so the first push of a fresh process already carries a non-zero value and Prometheus never sees the series at 0 \u2014 rate()/increase() return 0 for a module's FIRST request after a restart. Send one warm-up request to every agent before a demo.",
   "templating": {
     "list": [
       {
@@ -16,23 +17,119 @@
         "query": "prometheus",
         "current": {},
         "hide": 0
+      },
+      {
+        "name": "DS_TEMPO",
+        "label": "Tempo",
+        "type": "datasource",
+        "query": "tempo",
+        "current": {},
+        "hide": 0
+      },
+      {
+        "name": "price_in",
+        "label": "USD per 1M input tokens",
+        "type": "textbox",
+        "query": "0.15",
+        "current": { "text": "0.15", "value": "0.15" },
+        "hide": 0
+      },
+      {
+        "name": "price_out",
+        "label": "USD per 1M output tokens",
+        "type": "textbox",
+        "query": "0.60",
+        "current": { "text": "0.60", "value": "0.60" },
+        "hide": 0
       }
     ]
   },
   "panels": [
-    { "type": "row", "title": "Cost \u2014 tokens", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false },
+    { "type": "row", "title": "Preflight", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false },
     {
-      "type": "timeseries",
-      "title": "Tokens/min by model & type",
-      "description": "Metric names verified against Prometheus on 2026-07-11. Same numbers as gen_ai.usage.* span attributes, aggregated. framework label (raw / langchain4j / absent = Spring AI) splits the three instrumentation approaches.",
+      "type": "stat",
+      "title": "Seconds since last metrics push, per module",
+      "description": "time() minus the timestamp of the newest JVM sample per job. Every module pushes on its own 60 s cycle (claude-mcp-server: 30 s), so values between 0 and ~60 s are normal and change on every refresh \u2014 they show where each process is in its cycle, not a problem. Green: pushed within the last 90 s. Red: the module is down, or it is up and its OTLP endpoint is wrong \u2014 both look identical from here, and both mean its panels will be empty. Expect 8 modules (9 with claude-mcp-server running under Claude Desktop).",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 1 },
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 0, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 90 }, { "color": "red", "value": 180 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "graphMode": "none", "orientation": "auto", "colorMode": "background" },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (job, gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_total[$__rate_interval])) * 60",
-          "legendFormat": "{{job}} {{gen_ai_request_model}} {{gen_ai_token_type}}"
+          "expr": "time() - max by (job) (timestamp(jvm_memory_used_bytes{area=\"heap\"}))",
+          "legendFormat": "{{job}}",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Modules pushing",
+      "description": "Distinct jobs with any JVM sample in the last 3 minutes. 8 = the reactor; 9 = plus claude-mcp-server.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 7 }, { "color": "green", "value": 8 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "graphMode": "none", "colorMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(count by (job) (max_over_time(jvm_memory_used_bytes{area=\"heap\"}[3m])))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Modules that reported LLM metrics (range)",
+      "description": "Jobs for which gen_ai_client_token_usage_total has ANY sample inside the dashboard range. After a warm-up run of every agent this should read 7 (the two MCP servers have no model). This deliberately uses max_over_time, not increase(): Micrometer creates the counter on the first LLM call, so a module that made exactly one request since it started exports a flat, non-zero series \u2014 increase() over it is 0 and the module would wrongly be counted as silent (that is exactly what showed 2 instead of 7 on 2026-09-02). A module that is UP (previous panel) but missing HERE after a request has a working JVM export and a broken GenAI listener \u2014 the failure that once hid the LangChain4j leg.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 3 }, { "color": "green", "value": 7 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "graphMode": "none", "colorMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(count by (job) (max_over_time(gen_ai_client_token_usage_total[$__range])))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "LLM calls that failed (range)",
+      "description": "gen_ai_client_operation timer samples whose error tag is not 'none'. All three instrumentations tag it the same way \u2014 Spring AI through the Observation API, raw-agent and the LC4j listener by hand \u2014 so one query covers everything. 0 is the number you want to see before a demo; anything else means an OpenRouter/network problem that the happy path will not show you. Same first-sample blind spot as the token counters: a single failure right after a restart is invisible to increase().",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "graphMode": "none", "colorMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job) (increase(gen_ai_client_operation_milliseconds_count{error!=\"none\"}[$__range]))",
+          "legendFormat": "{{job}}",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    { "type": "row", "title": "Cost \u2014 tokens", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }, "collapsed": false },
+    {
+      "type": "timeseries",
+      "title": "Tokens/min by module (input + output)",
+      "description": "Same numbers as the gen_ai.usage.* span attributes, aggregated. The 'total' token type is filtered out \u2014 it is input+output and only doubled the legend. Model is dropped from the grouping for the same reason; every module runs openai/gpt-4o-mini on the openrouter profile. A module's FIRST request after a restart does not show here (see the dashboard description) \u2014 send a warm-up request first.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job, gen_ai_token_type) (rate(gen_ai_client_token_usage_total{gen_ai_token_type!=\"total\"}[$__rate_interval])) * 60",
+          "interval": "1m",
+          "legendFormat": "{{job}} {{gen_ai_token_type}}"
         }
       ]
     },
@@ -41,7 +138,7 @@
       "title": "Tokens (dashboard range)",
       "description": "Sums token usage over the CURRENT dashboard time range ($__range) \u2014 pick 'Last 15 minutes' and the numbers follow.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
       "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "graphMode": "none" },
       "targets": [
@@ -54,145 +151,256 @@
         }
       ]
     },
-    { "type": "row", "title": "Performance \u2014 LLM & tools", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 }, "collapsed": false },
-    {
-      "type": "timeseries",
-      "title": "LLM call duration by model (avg & p95)",
-      "description": "Source: gen_ai_client_operation_milliseconds histogram (values converted to seconds). raw-agent and LC4j emit the same meter name (gen.ai.client.operation) so all frameworks share this panel.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "(sum by (job, gen_ai_request_model) (rate(gen_ai_client_operation_milliseconds_sum[$__rate_interval])) / sum by (job, gen_ai_request_model) (rate(gen_ai_client_operation_milliseconds_count[$__rate_interval]))) / 1000",
-          "legendFormat": "avg {{job}} {{gen_ai_request_model}}"
-        },
-        {
-          "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le, job, gen_ai_request_model) (rate(gen_ai_client_operation_milliseconds_bucket[$__rate_interval]))) / 1000",
-          "legendFormat": "p95 {{job}} {{gen_ai_request_model}}"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "LLM calls/min by model",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (job, gen_ai_request_model) (rate(gen_ai_client_operation_milliseconds_count[$__rate_interval])) * 60",
-          "legendFormat": "{{job}} {{gen_ai_request_model}}"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Tool executions (Spring AI): rate & avg duration",
-      "description": "Source: spring_ai_tool_milliseconds \u2014 emitted only by Spring AI modules. raw-agent has tool_call SPANS (Tempo) but no tool metric; LC4j has gen_ai_client_tool_requests (model-requested tool calls). claude-mcp-server is absent here too: it has no agent loop, so it emits its own mcp_tool_* meters \u2014 see the MCP row below. To split per tool, inspect the label set in Prometheus and add it to by().",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [
-        { "matcher": { "id": "byRegexp", "options": "avg duration.*" }, "properties": [ { "id": "unit", "value": "s" } ] }
-      ] },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (job) (rate(spring_ai_tool_milliseconds_count[$__rate_interval])) * 60",
-          "legendFormat": "executions/min {{job}}"
-        },
-        {
-          "refId": "B",
-          "expr": "(sum by (job) (rate(spring_ai_tool_milliseconds_sum[$__rate_interval])) / sum by (job) (rate(spring_ai_tool_milliseconds_count[$__rate_interval]))) / 1000",
-          "legendFormat": "avg duration (s) {{job}}"
-        }
-      ]
-    },
-    { "type": "row", "title": "MCP \u2014 claude-mcp-server (STDIO)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 }, "collapsed": false },
-    {
-      "type": "timeseries",
-      "title": "MCP tool calls/min by tool",
-      "description": "Hand-written meters from CodeToolsService. This module has no agent loop, so Spring AI emits nothing for it \u2014 every increment is one tool call made by an MCP client over STDIO. No job filter: mcp_tool_* comes from claude-mcp-server only. Add job to by() if a second module ever emits these.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 19 },
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "custom": { "fillOpacity": 10 } }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (tool) (rate(mcp_tool_calls_total[$__rate_interval])) * 60",
-          "legendFormat": "{{tool}}"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "MCP tool duration by tool (avg & p95)",
-      "description": "Micrometer OTLP exports timers in milliseconds \u2014 same suffix as gen_ai_client_operation_milliseconds \u2014 converted to seconds here. search_in_files walks the whole tree and should stand out; read_file is sub-millisecond. If the p95 series stays empty the timer has no histogram buckets: add .publishPercentileHistogram() to the mcp.tool.duration builder, or read the avg series only.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 10, "x": 8, "y": 19 },
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "(sum by (tool) (rate(mcp_tool_duration_milliseconds_sum[$__rate_interval])) / sum by (tool) (rate(mcp_tool_duration_milliseconds_count[$__rate_interval]))) / 1000",
-          "legendFormat": "avg {{tool}}"
-        },
-        {
-          "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le, tool) (rate(mcp_tool_duration_milliseconds_bucket[$__rate_interval]))) / 1000",
-          "legendFormat": "p95 {{tool}}"
-        }
-      ]
-    },
     {
       "type": "stat",
-      "title": "Failed tool calls (dashboard range)",
-      "description": "Failed tool calls over the dashboard range. outcome is derived from the 'ERROR:' prefix of the returned text, NOT from thrown exceptions \u2014 this server answers the model with error strings so nothing propagates, and counting exceptions would show a permanent zero while the model reads failures all day. Empty panel = no failures.",
+      "title": "Estimated cost (dashboard range)",
+      "description": "input tokens x $price_in + output tokens x $price_out, prices per 1M tokens from the dashboard variables at the top. The defaults are the ORDER OF MAGNITUDE for gpt-4o-mini \u2014 check the OpenRouter price page on the day and type the current numbers into the variables; nothing here is fetched. Four decimals because a single agent turn costs a fraction of a cent, and that IS the point of the panel.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 19 },
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "graphMode": "none" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4, "noValue": "$0", "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "graphMode": "none", "colorMode": "value" },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (tool) (increase(mcp_tool_calls_total{outcome=\"error\"}[$__range]))",
-          "legendFormat": "{{tool}}",
+          "expr": "(sum(increase(gen_ai_client_token_usage_total{gen_ai_token_type=\"input\"}[$__range])) * $price_in + sum(increase(gen_ai_client_token_usage_total{gen_ai_token_type=\"output\"}[$__range])) * $price_out) / 1000000",
           "instant": true,
           "range": false
         }
       ]
     },
     {
-      "type": "timeseries",
-      "title": "Context returned to the model (avg chars per call)",
-      "description": "CHARACTERS, NOT TOKENS. This server never sees token counts \u2014 it has no model and no tokenizer, and MCP does not report usage back to the server \u2014 so the only honest measure is the length of the string handed to the client (roughly 3-4 chars per token for code, as an order of magnitude only). It is still the real cost of an MCP call and is invisible in latency: get_project_structure and search_in_files are the expensive ones. Pair it with gen_ai_client_token_usage from the agent modules for the full picture. If empty, check whether Prometheus names the series mcp_tool_result_size_sum WITHOUT the _chars suffix.",
+      "type": "bargauge",
+      "title": "Estimated cost by module (dashboard range)",
+      "description": "Same formula as the stat, per job. This is the panel that answers 'which pattern is the expensive one' \u2014 orchestrator-workers on Spring AI runs a full model round per worker, chaining runs three, parallelization runs three at once; the bars make the difference visible without reading a trace. A module showing $0 after exactly one request since its restart is the first-sample blind spot, not a free call.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 27 },
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "custom": { "drawStyle": "bars", "fillOpacity": 40 } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] } },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4, "noValue": "$0", "color": { "mode": "palette-classic-by-name" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (tool) (rate(mcp_tool_result_size_chars_sum[$__rate_interval])) / sum by (tool) (rate(mcp_tool_result_size_chars_count[$__rate_interval]))",
-          "legendFormat": "{{tool}}"
+          "expr": "(sum by (job) (increase(gen_ai_client_token_usage_total{gen_ai_token_type=\"input\"}[$__range])) * $price_in + sum by (job) (increase(gen_ai_client_token_usage_total{gen_ai_token_type=\"output\"}[$__range])) * $price_out) / 1000000",
+          "legendFormat": "{{job}}",
+          "instant": true,
+          "range": false
         }
       ]
     },
-    { "type": "row", "title": "Reliability \u2014 HTTP", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 }, "collapsed": false },
+    { "type": "row", "title": "Performance \u2014 LLM & tools", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }, "collapsed": false },
+    {
+      "type": "timeseries",
+      "title": "LLM call duration \u2014 avg by module",
+      "description": "Source: gen_ai_client_operation_milliseconds sum/count, converted to seconds. raw-agent and LC4j emit the same meter name (gen.ai.client.operation) as Spring AI so all three land here. p95 lives in the next panel \u2014 18 series on one chart was unreadable.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum by (job) (rate(gen_ai_client_operation_milliseconds_sum[$__rate_interval])) / sum by (job) (rate(gen_ai_client_operation_milliseconds_count[$__rate_interval]))) / 1000",
+          "interval": "1m",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM call duration \u2014 p95 by module",
+      "description": "histogram_quantile over the OTLP-exported buckets. With one or two calls per minute the p95 IS the slowest call, not a statistic \u2014 read it that way on stage. IF THIS PANEL IS EMPTY while avg (left) has data, the timers carry no _bucket series: check {__name__=~\"gen_ai_client_operation_milliseconds.*\"} in Prometheus. Buckets exist only when the timer publishes a percentile histogram; without them p95 cannot be computed from Prometheus and this panel should be dropped or the timers configured with publishPercentileHistogram().",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "s", "noValue": "no _bucket series \u2014 see panel description", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, job) (rate(gen_ai_client_operation_milliseconds_bucket[$__rate_interval]))) / 1000",
+          "interval": "1m",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM calls/min by module",
+      "description": "One line per module. The shape tells the pattern before the trace does: chaining = 3 calls in a row, parallelization = 3 at once, orchestrator-workers = a burst of 10.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job) (rate(gen_ai_client_operation_milliseconds_count[$__rate_interval])) * 60",
+          "interval": "1m",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool calls/min by module \u2014 all three frameworks",
+      "description": "Three meters, one panel. LangChain4j: gen_ai_client_tool_requests_total (tool calls the MODEL asked for, from the listener). Spring AI: spring_ai_tool_milliseconds_count (tool EXECUTIONS, from the spring.ai.tool observation). CONFIRMED 2026-09-02: this series appeared the moment the ChatClients were switched from ChatClient.builder(chatModel) \u2014 which hard-codes ObservationRegistry.NOOP \u2014 to the auto-configured ChatClient.Builder; the 'known Spring AI 2.0 gap' was that one call. raw-agent: not here yet \u2014 it has tool_call spans in Tempo but no counter; adding the same counter in RawAgentLoop is the missing 10 lines. The two meters count slightly different things (requested vs executed), which is itself worth a sentence on stage.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job) (rate(gen_ai_client_tool_requests_total[$__rate_interval])) * 60",
+          "interval": "1m",
+          "legendFormat": "{{job}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (job) (rate(spring_ai_tool_milliseconds_count[$__rate_interval])) * 60",
+          "interval": "1m",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool execution duration (Spring AI) \u2014 avg by tool",
+      "description": "Source: spring_ai_tool_milliseconds, tag spring_ai_tool_definition_name (confirmed in Prometheus 2026-09-02). Local tools (getSquad, getWeather) are sub-millisecond; getSecretRumors includes the human approval wait and dominates \u2014 it also has its own panel in the MCP row. MCP tools on the agent side (get_weather from spring-ai-agent-mcp) include the round-trip to mcp-server.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "fieldConfig": { "defaults": { "unit": "s", "noValue": "no Spring AI tool executions in range", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum by (job, spring_ai_tool_definition_name) (rate(spring_ai_tool_milliseconds_sum[$__rate_interval])) / sum by (job, spring_ai_tool_definition_name) (rate(spring_ai_tool_milliseconds_count[$__rate_interval]))) / 1000",
+          "interval": "1m",
+          "legendFormat": "{{job}} {{spring_ai_tool_definition_name}}"
+        }
+      ]
+    },
+    { "type": "row", "title": "MCP servers \u2014 mcp-server (HTTP) & claude-mcp-server (STDIO)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 }, "collapsed": false },
+    {
+      "type": "timeseries",
+      "title": "MCP tool calls/min by server & tool",
+      "description": "Hand-written meters: McpToolTelemetry (common, used by mcp-server) and CodeToolsService (claude-mcp-server) emit the same names and tags. Spring AI 2.0 instruments tool calling on the AGENT side only, so without these wrappers the server side of a propagated trace is a bare `http post /mcp`.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 40 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job, tool) (rate(mcp_tool_calls_total[$__rate_interval])) * 60",
+          "interval": "1m",
+          "legendFormat": "{{job}} {{tool}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "MCP tool duration by server & tool (avg)",
+      "description": "Micrometer OTLP exports timers in milliseconds, converted to seconds here. Approval-gated tools are EXCLUDED from this panel on purpose \u2014 they are human time, not machine time, and have their own panel to the right.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 40 },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum by (job, tool) (rate(mcp_tool_duration_milliseconds_sum{tool!~\"save_note|delete_note\"}[$__rate_interval])) / sum by (job, tool) (rate(mcp_tool_duration_milliseconds_count{tool!~\"save_note|delete_note\"}[$__rate_interval]))) / 1000",
+          "interval": "1m",
+          "legendFormat": "{{job}} {{tool}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Human-in-the-loop wait \u2014 gated tool duration (avg)",
+      "description": "The tools that block until a person decides: save_note and delete_note on mcp-server (mcp_tool_duration), and getSecretRumors in patterns-spring-ai (spring_ai_tool, agent side). This is the one latency in the whole system that no model or network explains \u2014 it is how long the person at /approvals took. Computed as sum/count per rate window; gated calls are rare, so within a window this is normally the duration of THE one call, not an average that dilutes it. An earlier version read the timer's _max gauge and stayed empty: Micrometer sends max inside the OTLP histogram point, but the collector-to-Prometheus path does not materialise a _max series. patterns-langchain4j is missing here by construction: its getSecretRumors has a tool_call SPAN (Tempo) but no timer.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 40 },
+      "fieldConfig": { "defaults": { "unit": "s", "noValue": "no approval-gated call in range", "color": { "mode": "palette-classic-by-name" }, "custom": { "drawStyle": "bars", "fillOpacity": 60 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum by (job, tool) (rate(mcp_tool_duration_milliseconds_sum{tool=~\"save_note|delete_note\"}[$__rate_interval])) / sum by (job, tool) (rate(mcp_tool_duration_milliseconds_count{tool=~\"save_note|delete_note\"}[$__rate_interval]))) / 1000",
+          "interval": "1m",
+          "legendFormat": "{{job}} {{tool}}"
+        },
+        {
+          "refId": "B",
+          "expr": "(sum by (job, spring_ai_tool_definition_name) (rate(spring_ai_tool_milliseconds_sum{spring_ai_tool_definition_name=\"getSecretRumors\"}[$__rate_interval])) / sum by (job, spring_ai_tool_definition_name) (rate(spring_ai_tool_milliseconds_count{spring_ai_tool_definition_name=\"getSecretRumors\"}[$__rate_interval]))) / 1000",
+          "interval": "1m",
+          "legendFormat": "{{job}} {{spring_ai_tool_definition_name}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "MCP payload per call (avg chars, request vs response)",
+      "description": "CHARACTERS, NOT TOKENS. An MCP server never sees token counts \u2014 no model, no tokenizer, and MCP reports no usage back \u2014 so the length of the strings exchanged is the only honest measure (roughly 3-4 chars per token for code, as an order of magnitude). Split by direction because the two are wildly asymmetric per tool: read_file sends a path and returns kilobytes, write_file sends the whole file and returns one line. Source: mcp_tool_payload_size_chars_{sum,count}.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 18, "x": 0, "y": 48 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "palette-classic-by-name" }, "custom": { "drawStyle": "bars", "fillOpacity": 40 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job, tool, direction) (rate(mcp_tool_payload_size_chars_sum[$__rate_interval])) / sum by (job, tool, direction) (rate(mcp_tool_payload_size_chars_count[$__rate_interval]))",
+          "interval": "1m",
+          "legendFormat": "{{job}} {{tool}} {{direction}}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Failed MCP tool calls (range)",
+      "description": "outcome is derived from the 'ERROR:' prefix of the returned text, NOT from thrown exceptions \u2014 these servers answer the model with error strings so nothing propagates. Empty panel = no failures.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 48 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job, tool) (increase(mcp_tool_calls_total{outcome=\"error\"}[$__range]))",
+          "legendFormat": "{{job}} {{tool}}",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    { "type": "row", "title": "Traces \u2014 click a trace ID to open the waterfall", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 56 }, "collapsed": false },
+    {
+      "type": "table",
+      "title": "Latest agent requests (Tempo)",
+      "description": "TraceQL search on the span NAME, which Spring Boot 4 sets to 'http <method> <route>' for every server span. WHY A TABLE: Grafana's 'Traces' panel renders ONE trace (a waterfall for a trace-ID query) and answers a TraceQL search result \u2014 which is a list \u2014 with 'No data found in response'. A search result is a table; the Tempo datasource attaches a link to the trace ID column that opens the waterfall in Explore. If the list is empty right after a request, Tempo's ingester needs a few seconds (same lag as 'Logs for this span').",
+      "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 57 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "traceID" }, "properties": [ { "id": "custom.width", "value": 300 } ] },
+          { "matcher": { "id": "byName", "options": "traceDuration" }, "properties": [ { "id": "unit", "value": "ms" } ] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [ { "displayName": "startTime", "desc": true } ] },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{ name =~ \"http (get|post) /api/v1/.*\" }",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ]
+    },
+    { "type": "row", "title": "Reliability \u2014 HTTP", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 67 }, "collapsed": false },
     {
       "type": "timeseries",
       "title": "Requests/min by service & endpoint",
-      "description": "Actuator endpoints are excluded at the source by the shared ObservationPredicate (module: common).",
+      "description": "Actuator endpoints are excluded at the source by the shared ObservationPredicate (module: common). /approvals polling from the chat-ui is NOT excluded \u2014 that flat line on the patterns modules is the UI asking for pending approvals.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 68 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
           "expr": "sum by (job, uri) (rate(http_server_requests_milliseconds_count[$__rate_interval])) * 60",
+          "interval": "1m",
           "legendFormat": "{{job}} {{uri}}"
         }
       ]
@@ -200,25 +408,27 @@
     {
       "type": "timeseries",
       "title": "HTTP 4xx/5xx per min",
-      "description": "Empty flat zero = zero errors (the query filters status 4xx/5xx).",
+      "description": "Flat zero = zero errors (the query filters status 4xx/5xx). A 500 on /api/v1/patterns/parallel from 2026-09-02 was the Jackson 3 FAIL_ON_NULL_FOR_PRIMITIVES change \u2014 fixed in ParallelizationPattern.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "custom": { "fillOpacity": 10 }, "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 68 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
           "expr": "sum by (job, uri, status) (rate(http_server_requests_milliseconds_count{status=~\"4..|5..\"}[$__rate_interval])) * 60",
+          "interval": "1m",
           "legendFormat": "{{job}} {{uri}} {{status}}"
         }
       ]
     },
-    { "type": "row", "title": "JVM", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 }, "collapsed": false },
+    { "type": "row", "title": "JVM", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 76 }, "collapsed": false },
     {
       "type": "timeseries",
       "title": "Heap used by service",
+      "description": "Gauges \u2014 no rate(), so these render at any range. That asymmetry is the tell when the panels above go blank: gauges fine + rate panels empty = window narrower than the push interval, not missing metrics.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
-      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 77 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
@@ -232,8 +442,8 @@
       "title": "Live threads by service",
       "description": "Watch mcp-server during a pending approval \u2014 virtual threads keep this flat while a request blocks.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 45 },
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 77 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         {
           "refId": "A",

@@ -18,27 +18,19 @@ spring:
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   ai:
-    # Spring AI 1.1+ — GenAI Semantic Conventions (OTel)
     chat:
       observations:
-        include-prompt: true
-        include-completion: true
+        # RENAMED IN SPRING AI 1.0.0-M8: include-prompt/include-completion ->
+        # log-prompt/log-completion, and the content goes to LOG lines
+        # (Loki, trace-correlated), not to span attributes. The old keys bound
+        # to nothing — see OBSERVABILITY.md §3 #5. The LangChain4j listener
+        # puts the same content on the SPAN instead: same data, two signals.
+        log-prompt: true
+        log-completion: true
 
 # ── Observability ─────────────────────────────────────────────────────────
-# Three signals, one port. Boot 4 property layout:
-#   traces  : management.opentelemetry.tracing.export.otlp.endpoint
-#             (Boot 3 spelling was management.otlp.tracing.endpoint — DEAD)
-#   logs    : management.opentelemetry.logging.export.otlp.endpoint
-#   metrics : management.otlp.metrics.export.url  (Micrometer OtlpMeterRegistry,
-#             not the OTel SDK — hence the deliberately different prefix)
-#
-# Logs additionally need the Logback->OTel bridge from `common`
-# (logback-spring.xml + OtelLoggingBridgeAutoConfiguration) plus actuator on
-# the classpath. Miss either and Loki stays empty with no error anywhere.
-#
-# An unknown property is ignored in silence, so the Boot 3 spelling is removed
-# rather than kept "just in case": metrics would arrive in Prometheus, Tempo
-# would stay empty, and nothing would say why.
+# Three signals to localhost:4318; property layout, the Logback->OTel bridge
+# and every silent failure found so far are documented in OBSERVABILITY.md.
 management:
   endpoints:
     web:
@@ -88,19 +80,14 @@ spring:
 # ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
 # API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
 #
-# BASE-URL NOW INCLUDES /v1 — CHANGED IN SPRING AI 2.0.
-# The OpenAI model was rewritten on top of the official OpenAI Java SDK
-# (com.openai:openai-java-core), replacing the RestClient implementation:
+# BASE-URL INCLUDES /v1 — CHANGED IN SPRING AI 2.0. The OpenAI model was
+# rewritten on top of the official OpenAI Java SDK, which appends
+# /chat/completions itself; completions-path no longer exists as a property.
+# With the stale value the request went to /api/chat/completions and OpenRouter
+# answered 404 (com.openai.errors.NotFoundException: 404: Unknown).
 #
-#   Spring AI 1.x : base-url + completions-path
-#                   https://openrouter.ai/api  +  /v1/chat/completions
-#   Spring AI 2.0 : base-url handed to the SDK, which appends
-#                   /chat/completions itself
-#
-# completions-path no longer exists as a property, so /v1 belongs in base-url.
-# With the stale value the request goes to /api/chat/completions and OpenRouter
-# answers 404, surfacing as com.openai.errors.NotFoundException: 404: Unknown —
-# a message that says nothing about the URL.
+# Model: OPENROUTER_MODEL env var with a default — one switch for all seven
+# agents when OpenRouter latency spikes on the day (see raw-agent yml).
 spring:
   config:
     activate:
@@ -117,5 +104,5 @@ spring:
           # still nests an Options object under spring.ai.openai.chat).
           # It was flattened only for embedding, image, audio, moderation
           # and OCR — do not "fix" those by analogy with this block.
-          model: openai/gpt-4o-mini   # vendor prefix required on OpenRouter
+          model: ${OPENROUTER_MODEL:openai/gpt-4o-mini}   # vendor prefix required on OpenRouter
           temperature: 0.3

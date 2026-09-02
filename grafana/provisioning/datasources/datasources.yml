@@ -41,6 +41,22 @@ datasources:
     editable: true
     jsonData:
       httpMethod: POST
+      # ── THE PUSH INTERVAL, DECLARED TO GRAFANA ──────────────────────────
+      # Nothing scrapes these applications: Micrometer's OtlpMeterRegistry
+      # PUSHES every 60 s (management.otlp.metrics.export.step default, logged
+      # at startup as "Publishing metrics ... every 1m"). Grafana does not
+      # know that; it assumes the Prometheus default of 15 s and derives
+      # $__rate_interval = 4 x 15 s = 60 s. A 60 s window over samples that
+      # are 60 s apart holds two points only by luck, so rate() and increase()
+      # return nothing most of the time and a module that clearly ran looks
+      # like it emitted no metrics at all — while its JVM gauges (no rate()
+      # involved) show up fine on the same dashboard.
+      #
+      # timeInterval is Grafana's "scrape interval" for this datasource. With
+      # 60 s here, $__rate_interval becomes 4 m and every rate window contains
+      # at least four pushes. If the step in application.yml ever changes,
+      # change this with it.
+      timeInterval: 60s
 
   # ── Tempo ────────────────────────────────────────────────────────────────
   - name: Tempo
