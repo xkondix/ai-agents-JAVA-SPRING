@@ -21,6 +21,12 @@ import PatternDiagram, { DiagramLegend } from '../components/PatternDiagram.jsx'
  * Colour convention: indigo/emerald identify the FRAMEWORKS (result
  * panels); the flows use a separate palette for node ROLES
  * (see DiagramLegend) because a pattern is framework-agnostic.
+ *
+ * The label next to each framework name is PER PATTERN (pattern.impl), not
+ * per framework: the LangChain4j Agentic DSL is used in three of the five
+ * patterns — chaining, routing and evaluator-optimizer — and a blanket
+ * "Agentic DSL" label overstated it for the other two.
+ * FRAMEWORKS[].style remains the fallback.
  */
 function PatternCard({ pattern }) {
   const [value, setValue] = useState(pattern.defaultValue ?? '')
@@ -118,6 +124,8 @@ function PatternCard({ pattern }) {
                         border-t border-slate-800">
           {FRAMEWORKS.map(fw => {
             const r = results[fw.id]
+            // Per-pattern label wins; the framework default is the fallback.
+            const impl = pattern.impl?.[fw.id] ?? fw.style
             return (
               <div key={fw.id}
                    className={`rounded-xl border ${fw.borderClass} border-opacity-40
@@ -125,7 +133,7 @@ function PatternCard({ pattern }) {
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-baseline gap-2 min-w-0">
                     <span className={`text-lg font-bold ${fw.textClass}`}>{fw.name}</span>
-                    <span className="text-sm text-slate-500 truncate">{fw.style}</span>
+                    <span className="text-sm text-slate-500 truncate" title={impl}>{impl}</span>
                   </div>
                   <span className={`text-base font-mono px-2 py-0.5 rounded shrink-0
                                     ${r.ok ? 'bg-slate-800 text-slate-300'
@@ -141,6 +149,20 @@ function PatternCard({ pattern }) {
             )
           })}
         </div>
+      )}
+
+      {/* Orchestrator-workers is the one pattern where the two modules run
+          genuinely different algorithms (in-conversation planning vs an
+          explicit three-phase pipeline). Without saying so, the 5x gap in
+          the timings above reads as "Spring AI is slow" rather than
+          "these measure different work". */}
+      {results && pattern.id === 'orchestrator' && (
+        <p className="text-base text-amber-500/80 mt-4">
+          Timings are not comparable here: LangChain4j plans inside one
+          conversation (~2 LLM calls), Spring AI runs an explicit
+          planner → workers → synthesis pipeline (~10 calls). Two valid
+          readings of the same pattern.
+        </p>
       )}
     </div>
   )
@@ -175,7 +197,9 @@ export default function PatternsPage() {
             </div>
             <p className="text-base text-slate-500 mt-3 ml-[4rem]">
               Both modules must be running. Every run lands in Grafana Tempo —
-              recognize the pattern by its waterfall shape.
+              recognize the pattern by its waterfall shape. The label next to
+              each answer says which mechanism produced it: the Agentic DSL
+              pays off in three of the five patterns, not all of them.
             </p>
           </div>
 

@@ -11,6 +11,10 @@
  *   sky   → LLM call
  *   amber → decision / control flow (router, evaluator, orchestrator,
  *           and the human approval gate)
+ *
+ * All diagrams share a 400-wide viewBox so they render at the same scale in
+ * the 460px flow column. The evaluator is the one exception (410) — see the
+ * comment there.
  */
 
 const C = {
@@ -156,24 +160,67 @@ function ParallelDiagram() {
   )
 }
 
+/**
+ * Evaluator-optimizer — propose ONCE, then score/fix in a loop.
+ *
+ * THE DIAGRAM USED TO LIE ABOUT THE LOOP. It showed the feedback arrow
+ * returning to the Generator, i.e. "regenerate the whole answer with the
+ * critique attached". Both modules now do the other thing: the generator
+ * runs once, outside the loop, and a separate FIXER improves the existing
+ * proposal. Spring AI was rewritten to match LangChain4j on 2026-09-02 —
+ * before that the two modules ran different algorithms under one pattern
+ * name and the side-by-side timings compared different work.
+ *
+ * It matters for reading the waterfall in Tempo: the trace hint promises
+ * "one chat, then N repetitions of a score+fix pair", and a diagram with
+ * the arrow on the generator sets up the wrong expectation.
+ *
+ * The accept path is an explicit labelled arrow rather than a floating
+ * "OK" box — previously the reader had to infer what that box was attached
+ * to.
+ *
+ * WHY THIS ONE IS 410 WIDE AND THE OTHERS ARE 400. The accept label carries
+ * the actual threshold, and "score ≥ 0.85" is wider than the OK box it sits
+ * under. At 400 the last character was clipped by the viewBox edge, which
+ * read as "0.8" with a stray mark — i.e. the diagram appeared to contradict
+ * the description above it. The whole group moved left and the canvas gained
+ * 10 units; the 2.5% scale difference against the other diagrams is
+ * invisible, a truncated threshold is not.
+ *
+ * The number is duplicated from THRESHOLD in BOTH pattern classes. Three
+ * places, one value — change them together or not at all.
+ */
 function EvaluatorDiagram() {
   return (
-    <svg viewBox="0 0 400 300" className="w-full">
+    <svg viewBox="0 0 410 320" className="w-full">
       <Defs />
-      <Box x={4}   y={94}  w={96}  h={48} label="Task" sub="season" />
-      <Arrow d="M100 118 L122 118" />
-      <Box x={124} y={88}  w={136} h={60} label="Generator" sub="proposes squad" accent={C.llm} />
-      <Arrow d="M260 118 L280 118" />
-      <Box x={282} y={88}  w={116} h={60} label="Evaluator" sub="score + feedback" accent={C.control} />
-      <Arrow d="M340 148 L340 198 L192 198 L192 148" />
-      <text x={266} y={228} textAnchor="middle" fill={C.sub} fontSize="14.5">
-        score &lt; 0.8 → loop back
+
+      {/* propose once — outside the loop */}
+      <Box x={4}   y={20}  w={96}  h={48} label="Task" sub="season" />
+      <Arrow d="M100 44 L124 44" />
+      <Box x={126} y={14}  w={150} h={60} label="Generator" sub="proposes squad · once" accent={C.llm} />
+      <Arrow d="M201 74 L201 108" />
+
+      {/* the loop: evaluate, then fix, then evaluate again */}
+      <Box x={126} y={110} w={150} h={60} label="Evaluator" sub="score + feedback" accent={C.control} />
+      <Arrow d="M201 170 L201 204" />
+      <Box x={126} y={206} w={150} h={60} label="Fixer" sub="improves the lineup" accent={C.llm} />
+
+      {/* loop back to the evaluator — NOT to the generator */}
+      <Arrow d="M126 236 L60 236 L60 140 L124 140" />
+      <text x={40} y={286} textAnchor="start" fill={C.sub} fontSize="14.5">
+        score &lt; threshold → fix, then score again
       </text>
-      <text x={266} y={250} textAnchor="middle" fill={C.sub} fontSize="14.5">
+      <text x={40} y={306} textAnchor="start" fill={C.sub} fontSize="14.5">
         (max N iterations)
       </text>
-      <Arrow d="M340 88 L340 54 L356 54" />
-      <Box x={340} y={22}  w={58} h={46} label="OK" />
+
+      {/* accept path — shifted left so the threshold label fits the canvas */}
+      <Arrow d="M276 140 L310 140 L310 92 L328 92" />
+      <Box x={330} y={68}  w={62} h={46} label="OK" />
+      <text x={361} y={132} textAnchor="middle" fill={C.sub} fontSize="14.5">
+        score ≥ 0.85
+      </text>
     </svg>
   )
 }
@@ -188,12 +235,19 @@ function OrchestratorDiagram() {
       <Arrow d="M250 72 L250 104 L336 104 L336 138" />
       <Box x={4}   y={140} w={120} h={60} label="Worker" sub="getSquad" accent={C.llm} />
       <Box x={140} y={140} w={120} h={60} label="Worker" sub="getPlayerStats" accent={C.llm} />
-      <Box x={276} y={140} w={120} h={60} label="Worker" sub="getTransfers" accent={C.llm} />
+      <Box x={276} y={140} w={120} h={60} label="Worker" sub="?" accent={C.llm} />
       <Arrow d="M64 200 L64 236 L150 236 L150 216" />
       <Arrow d="M200 200 L200 216" />
       <Arrow d="M336 200 L336 236 L250 236 L250 216" />
-      <text x={200} y={270} textAnchor="middle" fill={C.sub} fontSize="14.5">
-        results flow back for synthesis
+      {/* The third worker is deliberately unnamed: the whole point of this
+          pattern is that the orchestrator decides WHICH tools to call, and
+          how many, at runtime. Three fixed named boxes suggested a known
+          plan — which is parallelization, not orchestrator-workers. */}
+      <text x={200} y={266} textAnchor="middle" fill={C.sub} fontSize="14.5">
+        which workers, and how many,
+      </text>
+      <text x={200} y={286} textAnchor="middle" fill={C.sub} fontSize="14.5">
+        is decided by the model at runtime
       </text>
     </svg>
   )
