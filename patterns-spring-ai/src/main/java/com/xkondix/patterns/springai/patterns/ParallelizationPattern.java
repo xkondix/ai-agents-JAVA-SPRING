@@ -53,6 +53,26 @@ import java.util.concurrent.Executors;
  * JSON_SCHEMA in OpenAiChatOptions), which guarantees the shape; it is left
  * out here because it ties the pattern to one provider's option and the talk
  * compares frameworks, not providers.
+ *
+ * ── A THROWN BRANCH MUST NOT TAKE DOWN THE FAN-OUT ──────────────────────────
+ *
+ * The retry above covers a branch that ANSWERS BADLY. It does not cover a
+ * branch that does not answer at all: a timeout, a 429, a dropped connection.
+ * Those escape score(), CompletableFuture.join() rethrows them wrapped in a
+ * CompletionException, and one failed candidate out of five turns the whole
+ * request into a 500 — with the original cause one level deeper than usual,
+ * so the HTTP response says nothing useful.
+ *
+ * That is not hypothetical here: OpenRouter latency has been observed between
+ * 8 and 47 seconds, and this is the one pattern that fires every branch at
+ * once. On stage it is also the worst possible failure — four good scores
+ * discarded because the fifth timed out.
+ *
+ * So each branch catches its own exception and degrades to a 0.0 entry that
+ * NAMES the failure. The aggregate still answers, the trace still shows the
+ * failed span, and the response text admits which candidate could not be
+ * scored. Partial results beat no results — and saying so out loud beats
+ * quietly pretending the candidate scored zero.
  */
 @Slf4j
 @Service
@@ -85,6 +105,9 @@ public class ParallelizationPattern {
 
     public String run() {
         var candidates = MilanKnowledgeBase.secretRumors();
+        if (candidates.isEmpty()) {
+            return "No transfer rumors to score.";
+        }
         log.info("[PARALLEL] fan-out over {} candidates", candidates.size());
 
         // Fan-out — one LLM call per candidate, all at once
@@ -92,7 +115,9 @@ public class ParallelizationPattern {
                 .map(rumor -> CompletableFuture.supplyAsync(() -> score(rumor), executor))
                 .toList();
 
-        // Barrier + aggregation in CODE (could also be a final LLM call)
+        // Barrier + aggregation in CODE (could also be a final LLM call).
+        // join() is safe here only because score() never throws — see the
+        // class comment; without that guarantee one slow branch is a 500.
         List<CandidateScore> scores = futures.stream()
                 .map(CompletableFuture::join)
                 .toList();
@@ -102,24 +127,46 @@ public class ParallelizationPattern {
                 .max(Comparator.comparingDouble(CandidateScore::scoreOrZero))
                 .orElseThrow();
 
+        long failed = scores.stream().filter(s -> !s.isUsable() || s.scoreOrZero() == 0.0).count();
+        String note = failed == 0 ? "" :
+                "\n\nNote: " + failed + " of " + scores.size()
+                        + " branches could not be scored — see rationale.";
+
         return "Best candidate: " + best.player()
                 + " (score " + best.score() + ") — " + best.rationale()
-                + "\n\nAll scores: " + scores;
+                + "\n\nAll scores: " + scores + note;
     }
 
-    /** One branch of the fan-out — up to MAX_ATTEMPTS calls, see the class comment. */
+    /**
+     * One branch of the fan-out — up to MAX_ATTEMPTS calls, see the class
+     * comment. NEVER THROWS: a branch that fails is worth 0.0, not a failed
+     * request for the other four.
+     */
     private CandidateScore score(MilanKnowledgeBase.Rumor rumor) {
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-            CandidateScore parsed = plainAgent.prompt()
-                    .user(prompt(rumor, attempt))
-                    .call()
-                    .entity(CandidateScore.class);
+            try {
+                CandidateScore parsed = plainAgent.prompt()
+                        .user(prompt(rumor, attempt))
+                        .call()
+                        .entity(CandidateScore.class);
 
-            if (parsed != null && parsed.isUsable()) {
-                return parsed;
+                if (parsed != null && parsed.isUsable()) {
+                    return parsed;
+                }
+                log.warn("[PARALLEL] attempt {}/{} for {} returned an unusable object: {}",
+                        attempt, MAX_ATTEMPTS, rumor.player(), parsed);
+
+            } catch (RuntimeException e) {
+                // Timeout, 429, dropped connection, unparsable payload — the
+                // retry is worth a shot, but the fan-out is not worth losing.
+                log.warn("[PARALLEL] attempt {}/{} for {} failed: {}: {}",
+                        attempt, MAX_ATTEMPTS, rumor.player(),
+                        e.getClass().getSimpleName(), e.getMessage());
+                if (attempt == MAX_ATTEMPTS) {
+                    return new CandidateScore(rumor.player(), 0.0,
+                            "could not be scored — " + e.getClass().getSimpleName());
+                }
             }
-            log.warn("[PARALLEL] attempt {}/{} for {} returned an unusable object: {}",
-                    attempt, MAX_ATTEMPTS, rumor.player(), parsed);
         }
         log.warn("[PARALLEL] giving up on {} — recorded as 0.0", rumor.player());
         return new CandidateScore(rumor.player(), 0.0,
