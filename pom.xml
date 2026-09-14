@@ -36,6 +36,10 @@
         <module>spring-ai-agent-mcp</module>
         <module>patterns-langchain4j</module>
         <module>patterns-spring-ai</module>
+        <!-- Spring AI ONLY, on purpose: image / speech / transcription models
+             are first-class abstractions there and have no LangChain4j twin.
+             This is the module where the framework comparison stops. -->
+        <module>multimodal-lab</module>
     </modules>
 
     <properties>
@@ -79,7 +83,10 @@
             ClassNotFoundException.
 
             Renamed in 2.0: spring-ai-advisors-vector-store is now
-            spring-ai-vector-store-advisor.
+            spring-ai-vector-store-advisor. The TTS API moved too:
+            org.springframework.ai.openai.audio.speech.* is now
+            org.springframework.ai.audio.tts.*, SpeechModel is
+            TextToSpeechModel, and `speed` went from Float to Double.
         -->
         <spring-ai.version>2.0.0</spring-ai.version>
 
@@ -212,7 +219,7 @@
 
             The Logback->OTel bridge itself lives in `common` (dependency,
             logback-spring.xml and the installer auto-configuration), so all
-            nine modules get logs in Loki from one place.
+            modules get logs in Loki from one place.
         -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

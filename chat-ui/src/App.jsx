@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RefreshCw, Bot, ShieldCheck, Workflow } from 'lucide-react'
+import { RefreshCw, Bot, ShieldCheck, Workflow, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import AgentSelector from './components/AgentSelector.jsx'
 import ChatWindow from './components/ChatWindow.jsx'
@@ -66,6 +66,21 @@ export default function App() {
           </Link>
         </div>
 
+        {/* multimodal lab link — not in the agent list on purpose: the
+            composer needs a file picker and a microphone, and the module
+            exists in one framework only. */}
+        <div className="px-4 pt-3">
+          <Link
+            to="/multimodal"
+            className="flex items-center gap-2 w-full px-3 py-2 rounded-xl
+                       bg-slate-800 hover:bg-slate-700 transition-colors"
+          >
+            <Sparkles size={14} className="text-teal-400" />
+            <span className="text-xs font-medium text-slate-300">Multimodal Lab</span>
+            <span className="ml-auto text-[10px] text-slate-500">8089</span>
+          </Link>
+        </div>
+
         {/* approvals link */}
         <div className="px-4 py-3">
           <Link
@@ -117,6 +132,7 @@ export default function App() {
               <p>spring-ai-agent-local   → port 8084</p>
               <p>spring-ai-agent-mcp     → port 8085</p>
               <p>patterns → Patterns Lab (8087 vs 8088)</p>
+              <p>multimodal → Multimodal Lab (8089)</p>
             </div>
           </div>
         )}

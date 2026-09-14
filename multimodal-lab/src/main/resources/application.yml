@@ -1,0 +1,185 @@
+# ── Base ──────────────────────────────────────────────────────────────────
+server:
+  port: 8089
+  tomcat:
+    max-swallow-size: 20MB
+
+spring:
+  application:
+    name: multimodal-lab
+  profiles:
+    default: openrouter
+  servlet:
+    multipart:
+      # A phone photo blows past the 1 MB default, and the rejection message
+      # says nothing useful.
+      max-file-size: 20MB
+      max-request-size: 25MB
+  # Virtual threads: image generation blocks for 30-45 s (measured), far
+  # longer than any chat call elsewhere in this project, and a chained request
+  # does several in a row. A handful of users would pin the Tomcat pool.
+  threads:
+    virtual:
+      enabled: true
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  ai:
+    chat:
+      observations:
+        log-prompt: true
+        log-completion: true
+      memory:
+        repository:
+          # Redis rather than a field: a conversation here refers to files on
+          # disk, so an in-memory window loses the thread while the artifacts
+          # outlive it. Container is already in docker-compose.
+          # TO VERIFY: if this key is not bound, memory silently falls back to
+          # in-memory. Check with `redis-cli KEYS "*"` after the first turn.
+          redis:
+            initialize-schema: true
+
+# ── Media storage ─────────────────────────────────────────────────────────
+# Uploads and generated artifacts land here and are served back as URLs under
+# /api/v1/multimodal/media/**. NEVER as base64 in a response: a generated PNG
+# measured 2.5 MB, which would go into the model's context, into the span
+# attributes and into Loki at once — three failures, two of them silent.
+multimodal:
+  media-dir: ./media
+  # The vision leg runs on its own model so the router can stay cheap.
+  vision-model: ${OPENROUTER_VISION_MODEL:openai/gpt-4o-mini}
+
+# ── Observability ─────────────────────────────────────────────────────────
+# Same three signals as every other module — see OBSERVABILITY.md.
+#
+# WHAT IS DIFFERENT HERE: token metrics stop describing cost. An image is
+# billed per picture, speech PER CHARACTER of input, transcription per second
+# of audio. gen_ai_client_token_usage covers only the chat leg, so this module
+# adds mm.generation.* tagged by `modality`. The cost panel needs a second
+# axis, and that is the point worth making on a slide.
+#
+# KNOWN WARNING, NOT OURS: Prometheus rejects Spring AI's
+# gen_ai.client.operation.active on the second registration, because the image
+# model publishes it without the gen_ai_response_model tag that the chat model
+# includes. The meter is always zero anyway; the log line appears once and
+# then drops to debug.
+#
+# Do NOT enable prompt content capture on spans here: an attached image would
+# be base64 in a span attribute and Tempo drops oversized attributes silently.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  tracing:
+    sampling:
+      probability: 1.0
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+    logging:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/logs
+  otlp:
+    metrics:
+      export:
+        url: http://localhost:4318/v1/metrics
+
+logging:
+  level:
+    com.xkondix: DEBUG
+    org.springframework.ai: INFO
+
+---
+# ── Profile: openrouter — every modality through one base-url ─────────────
+# API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
+#
+# ONE KEY, ONE BASE URL, FOUR MODELS. OpenRouter serves image
+# (/images/generations) and audio (/audio/speech, /audio/transcriptions)
+# through OpenAI-compatible endpoints. Verified in Spring AI 2.0.0 source: the
+# image and audio models build their client through OpenAiSetup — the same
+# helper the chat model uses — and it passes base-url to the OpenAI SDK.
+#
+# ══ THE DOCUMENTATION AND THE CATALOGUE DISAGREE ══════════════════════════
+#
+# This cost two failed demo runs and is worth a slide of its own.
+#
+# First guess, translated from OpenAI's own docs:
+#     openai/gpt-4o-mini-tts            →  400: Model does not exist
+# Second guess, copied VERBATIM from OpenRouter's TTS documentation, which
+# uses it in every code sample and even in the "Model not found?"
+# troubleshooting section as the example of a CORRECT slug:
+#     openai/gpt-4o-mini-tts-2025-12-15 →  400: Model does not exist
+#
+# Then the live catalogue:
+#     curl "https://openrouter.ai/api/v1/models?output_modalities=speech"
+#
+# 18 speech models, and NOT ONE of them is from OpenAI. The documented
+# example simply is not served. Not a typo, not a region thing — the docs
+# describe a catalogue that does not exist.
+#
+# The lesson generalises past this file: for anything model-name shaped, the
+# catalogue endpoint is the source of truth and the documentation is a
+# secondary source. `supported_voices` is in that response too, which matters
+# because voices are NOT shared between providers — a valid model with
+# another provider's voice fails the same way.
+#
+# ── VOICES ARE PER MODEL, NOT PER API ──────────────────────────────────────
+#
+#   x-ai/grok-voice-tts-1.0            eve, ara, rex, sal, leo
+#   google/gemini-3.1-flash-tts-preview Zephyr, Puck, Kore, Charon, Leda, …
+#   mistralai/voxtral-mini-tts-2603    en_paul_neutral, gb_jane_neutral, …
+#   deepgram/aura-2                    aura-2-thalia-en, aura-2-elara-de, …
+#   microsoft/mai-voice-2              en-US-Harper:MAI-Voice-2, …
+#   free, for testing:                 deepgram/flux-tts:free (English only),
+#                                      fish-audio/s2.1-pro-free:free
+#
+# Default below is Grok Voice because it advertises AUTOMATIC LANGUAGE
+# DETECTION across 20+ languages, and this demo is driven in Polish — most of
+# the alternatives publish English-, German- or French-tagged voices only.
+# Gemini Flash TTS is the cheapest multilingual fallback.
+spring:
+  config:
+    activate:
+      on-profile: openrouter
+  ai:
+    model:
+      chat: openai
+    openai:
+      base-url: https://openrouter.ai/api/v1
+      api-key: ${OPENROUTER_API_KEY}
+      chat:
+        options:
+          # The ROUTER model. It never sees a pixel — analyze_image delegates
+          # to multimodal.vision-model — so this one can stay small.
+          model: ${OPENROUTER_MODEL:openai/gpt-4o-mini}
+          temperature: 0.3
+      image:
+        options:
+          model: ${OPENROUTER_IMAGE_MODEL:openai/gpt-image-1}
+          size: 1024x1024
+      audio:
+        speech:
+          options:
+            # Verified present in the catalogue on 2026-09-14.
+            # Alternative: google/gemini-3.1-flash-tts-preview + voice Zephyr.
+            model: ${OPENROUTER_TTS_MODEL:x-ai/grok-voice-tts-1.0}
+            voice: ${OPENROUTER_TTS_VOICE:eve}
+            # MUST be set explicitly: OpenRouter defaults response_format to
+            # PCM, not mp3. Raw PCM saved as .mp3 plays as silence or as a
+            # broken player — a decoding failure that looks like a UI bug.
+            response-format: mp3
+            # Double in Spring AI 2.0, Float before it. Only some providers
+            # honour it; the rest ignore it silently.
+            speed: 1.0
+        transcription:
+          options:
+            # NOT VERIFIED — the catalogue query for transcription models kept
+            # redirecting to the speech list, so this is still a guess. Check
+            # before relying on the microphone:
+            #   curl "https://openrouter.ai/api/v1/models?output_modalities=transcription"
+            model: ${OPENROUTER_STT_MODEL:openai/whisper-large-v3}
