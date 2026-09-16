@@ -4,62 +4,97 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Collects the artifacts produced during one request.
+ * Collects the artifacts produced during one request — and counts the
+ * failures, which turned out to matter more.
  *
- * WHY THIS EXISTS. The first version asked the model to quote the tool's URL
- * verbatim and then scraped the answer with a regex. The system prompt says
- * "repeat that URL verbatim", and on the very first real run gpt-4o-mini
- * answered with:
+ * ── WHY THE ARTIFACT LIST EXISTS ───────────────────────────────────────────
  *
- *     ![Cat](https://api.v1/multimodal/media/2026-09-05/39caecc8….png)
+ * The first version asked the model to quote each tool's URL verbatim and
+ * scraped the answer with a regex. Two runs, two different inventions:
  *
- * It invented a scheme and a host, dropped the leading slash, and wrapped the
- * whole thing in markdown. The file was on disk and perfectly fine; the UI
- * showed nothing.
+ *     ![Cat](https://api.v1/multimodal/media/…png)
+ *     ![GKS Stadium](attachment://stadion_gks_katowice.png)
  *
- * The lesson generalises past this module: AN INSTRUCTION IS NOT A CONTRACT.
- * Anything the interface depends on has to be produced by code, not requested
- * in a prompt. The model is free to reformat, translate or beautify — and it
- * will, especially once the conversation is in another language.
+ * Invented hosts, invented schemes, invented filenames, wrapped in markdown.
+ * Both times the real file was on disk and the UI showed nothing. AN
+ * INSTRUCTION IS NOT A CONTRACT: anything the interface depends on has to be
+ * produced by code, not requested in a prompt.
  *
- * So the tools now report what they created and the controller reads that
- * list. What the model writes about the URL becomes cosmetic.
+ * ── WHY THE FAILURE COUNTER EXISTS ─────────────────────────────────────────
  *
- * THREAD-LOCAL IS SAFE HERE, with one condition worth stating: the tool calls
- * happen on the SAME thread as the chat call, because ToolCallingAdvisor runs
- * the loop synchronously. Virtual threads do not change that — each request
- * still gets one carrier for its whole life. If this module ever moves to the
- * streaming API, this class has to move with it, because the tool calls would
- * land on reactor threads instead.
+ * ToolCallingAdvisor loops until the model stops asking for tools. That is the
+ * feature — chaining for free — and it has no failure semantics: a tool that
+ * answers "ERROR: …" has, as far as the loop is concerned, answered. The model
+ * reads the error, decides to try again, and the loop happily obliges.
+ *
+ * Observed on 2026-09-15: one request to generate music produced OVER A
+ * HUNDRED calls to generate_music in a single turn, each failing on the same
+ * validation error, each round trip billed as a chat call. It only stopped
+ * because the model eventually gave up.
+ *
+ * That failure happened to be local and free. A transient 500 from an image or
+ * music provider would not be: at $0.04 per Lyria clip, a hundred retries is
+ * four dollars of nothing, generated in under a minute with no rate limit and
+ * no error anywhere that says "this is looping".
+ *
+ * So the loop needs a stop condition that the framework does not provide. The
+ * tools ask this counter before working and return a TERMINAL message once the
+ * budget is spent — one the model is told not to retry. The counter resets per
+ * request, alongside the artifact list.
  */
 @Component
 public class MediaCollector {
 
-    private static final ThreadLocal<List<String>> ARTIFACTS =
+    /** Failed generation attempts allowed per request, across all tools. */
+    public static final int MAX_FAILURES = 2;
+
+    private static final ThreadLocal<List<Artifact>> ARTIFACTS =
             ThreadLocal.withInitial(ArrayList::new);
+    private static final ThreadLocal<AtomicInteger> FAILURES =
+            ThreadLocal.withInitial(AtomicInteger::new);
 
     /** Call at the start of a request — a thread is reused across requests. */
     public void start() {
         ARTIFACTS.get().clear();
+        FAILURES.get().set(0);
     }
 
-    /** Called by the tools with the public URL they just stored. */
-    public void add(String url) {
-        ARTIFACTS.get().add(url);
+    /** Called by the tools with what they just produced. */
+    public void add(Artifact artifact) {
+        ARTIFACTS.get().add(artifact);
     }
 
-    public List<String> collected() {
+    public List<Artifact> collected() {
         return List.copyOf(ARTIFACTS.get());
     }
 
+    /** Just the playable/viewable URLs, in production order, for the reply. */
+    public List<String> urls() {
+        return ARTIFACTS.get().stream()
+                .filter(a -> a.kind() != Artifact.Kind.TEXT)
+                .map(Artifact::url)
+                .toList();
+    }
+
+    /** @return true once this request has burned its retry budget. */
+    public boolean budgetExhausted() {
+        return FAILURES.get().get() >= MAX_FAILURES;
+    }
+
+    public int recordFailure() {
+        return FAILURES.get().incrementAndGet();
+    }
+
     /**
-     * Removes the entry entirely rather than just clearing the list: with a
+     * Removes the entries entirely rather than just clearing them: with a
      * pooled or virtual carrier, a stale ThreadLocal is a slow leak that only
      * shows up under load.
      */
     public void clear() {
         ARTIFACTS.remove();
+        FAILURES.remove();
     }
 }

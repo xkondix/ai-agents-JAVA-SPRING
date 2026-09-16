@@ -1,5 +1,6 @@
 package com.xkondix.multimodal.tools;
 
+import com.xkondix.multimodal.media.Artifact;
 import com.xkondix.multimodal.media.MediaCollector;
 import com.xkondix.multimodal.media.MediaStorage;
 import com.xkondix.multimodal.service.VisionAgent;
@@ -14,6 +15,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 /**
@@ -30,34 +32,40 @@ import java.util.Base64;
  * the same iteration, but here the model owns the plan, so the iteration
  * belongs to the framework rather than to us.
  *
- * TOOLS RETURN A SENTENCE WITH A URL, NEVER THE BYTES. A tool result goes
- * back into the conversation, so returning base64 would push a megabyte into
- * the next prompt — paid per token, repeated on every following turn, and
- * copied into the span attributes and Loki where it silently exceeds the
- * limits. The file goes to disk; the model gets a path.
+ * ── EVERY TOOL CHECKS THE RETRY BUDGET. EVERY ONE. ─────────────────────────
  *
- * AND THE URL IS ALSO REPORTED TO MediaCollector, because the model cannot be
- * trusted to echo it. On the first real run gpt-4o-mini turned
- * /api/v1/multimodal/media/…png into
- * ![Cat](https://api.v1/multimodal/media/…png) — invented host, no leading
- * slash, wrapped in markdown. The artifact existed; the UI showed nothing.
- * Instructions are not contracts: what the interface depends on must be
- * produced by code.
+ * ToolCallingAdvisor has no failure semantics: a tool that answers "ERROR: …"
+ * has, as far as the loop is concerned, answered. The model reads the error,
+ * decides to try again, and nothing stops it. Observed on 2026-09-15: one
+ * request produced OVER A HUNDRED calls to generate_music in a single turn.
+ *
+ * The budget was added to MusicTools and VideoTools first because those are
+ * the expensive ones — and that was a mistake worth recording. The loop does
+ * not care which tool is cheap. A hundred failing generate_image calls is
+ * still a hundred image requests, and a hundred failing analyze_image calls
+ * is a hundred vision calls; neither is free, and both fail in exactly the
+ * same silent-until-the-invoice way. Protecting only the tools whose price
+ * you happen to notice is not protection, it is luck.
+ *
+ * So the check is now in all five tools, before any work happens.
+ *
+ * TOOLS RETURN A SENTENCE, NEVER THE BYTES AND NO LONGER EVEN THE URL. A tool
+ * result goes back into the conversation, so returning base64 would push
+ * megabytes into the next prompt — paid per token, repeated every turn, and
+ * copied into span attributes and Loki where it silently exceeds the limits.
+ * The URL was dropped too, once it became clear the model rewrites it (see
+ * MediaCollector); the interface reads the collector instead.
  *
  * ── TWO API NOTES FOR SPRING AI 2.0 ────────────────────────────────────────
  *
  * 1. TTS WAS RENAMED. org.springframework.ai.openai.audio.speech.* moved to
  *    org.springframework.ai.audio.tts.*, SpeechModel became
- *    TextToSpeechModel, and `speed` went from Float to Double. Every tutorial
- *    online still shows the old names — the rename fails loudly, the
- *    Float→Double would have been the quiet one.
+ *    TextToSpeechModel, and `speed` went from Float to Double.
  *
  * 2. THE IMAGE RESULT IS EITHER A URL OR BASE64, DEPENDING ON THE MODEL.
  *    Older OpenAI models answer with a temporary URL; gpt-image-* answers
- *    with b64Json and no URL at all. Reading only one of the two is how you
- *    get a NullPointerException three weeks after it worked. Both are handled
- *    here, and a remote URL is downloaded immediately so the artifact
- *    outlives the provider's expiry window.
+ *    with b64Json and no URL at all. Both are handled, and a remote URL is
+ *    downloaded immediately so the artifact outlives the provider's expiry.
  */
 @Slf4j
 @Service
@@ -89,6 +97,8 @@ public class MultimodalTools {
             question about it. You cannot see images yourself — this is the
             only way to find out what is in one. Pass the image URL exactly as
             it was given to you.
+
+            If this returns an ERROR, do NOT call it again in the same turn.
             """)
     public String analyze_image(
             @ToolParam(description = "The image URL from the conversation, e.g. /api/v1/multimodal/media/2026-09-05/abc.png")
@@ -96,10 +106,17 @@ public class MultimodalTools {
             @ToolParam(description = "What you want to know about the picture", required = false)
             String question) {
 
+        String refusal = refuseIfBudgetSpent("analyze_image", "look at images");
+        if (refusal != null) {
+            return refusal;
+        }
         try {
             return visionAgent.analyze(image_url, question);
         } catch (RuntimeException e) {
-            return "ERROR: could not analyze the image — " + e.getMessage();
+            collector.recordFailure();
+            log.error("[MM] analyze_image failed: {}", e.getMessage());
+            return "ERROR: could not analyze the image — " + e.getMessage()
+                    + ". Do NOT retry; tell the user this part failed.";
         }
     }
 
@@ -108,10 +125,18 @@ public class MultimodalTools {
             Use this whenever the user asks to draw, illustrate, visualise or
             picture something. The picture is shown to the user automatically —
             just say what you drew.
+
+            Each attempt costs money. If this returns an ERROR, do NOT call it
+            again in the same turn.
             """)
     public String generate_image(
             @ToolParam(description = "Detailed English description of the picture to draw")
             String description) {
+
+        String refusal = refuseIfBudgetSpent("generate_image", "generate pictures");
+        if (refusal != null) {
+            return refusal;
+        }
 
         log.info("[MM] generate_image: {}", abbreviate(description));
         Timer.Sample sample = Timer.start(registry);
@@ -125,57 +150,97 @@ public class MultimodalTools {
             } else if (image.getUrl() != null && !image.getUrl().isBlank()) {
                 bytes = download(image.getUrl());
             } else {
-                return "ERROR: the image model returned neither b64_json nor a url.";
+                // Counts as a failure: the call was made and billed, it just
+                // came back in a shape we cannot use.
+                collector.recordFailure();
+                record("image", 0, sample);
+                return "ERROR: the image model returned neither b64_json nor a url. Do NOT retry.";
             }
 
             String url = storage.store(bytes, "png");
-            collector.add(url);
+            collector.add(Artifact.of(url, Artifact.Kind.IMAGE, description));
             record("image", bytes.length, sample);
-            // The URL is deliberately NOT in the return value any more: the
-            // model kept reformatting it, and the UI reads the collector.
             return "Done — the picture has been created and shown to the user.";
 
         } catch (RuntimeException e) {
-            log.error("[MM] generate_image failed: {}", e.getMessage());
+            int failures = collector.recordFailure();
+            log.error("[MM] generate_image failed ({}/{}): {}",
+                    failures, MediaCollector.MAX_FAILURES, e.getMessage());
             record("image", 0, sample);
-            return "ERROR: could not generate the image — " + e.getMessage();
+            return "ERROR: could not generate the image — " + e.getMessage()
+                    + ". Do NOT retry; tell the user this part failed.";
         }
     }
 
     @Tool(description = """
             Read a piece of text out loud and save it as an MP3.
             Use this when the user asks to hear, say, speak or narrate
-            something. The player appears for the user automatically — just
-            confirm what you read. Keep the text under a few hundred words.
+            something. This is a NARRATING VOICE, not music — for a song or a
+            melody use generate_music instead. The player appears for the user
+            automatically; just confirm what you read. Keep the text under a
+            few hundred words.
+
+            If this returns an ERROR, do NOT call it again in the same turn.
             """)
     public String speak_text(
             @ToolParam(description = "The exact text to read out loud, in the language it is written in")
             String text) {
+
+        String refusal = refuseIfBudgetSpent("speak_text", "read text out loud");
+        if (refusal != null) {
+            return refusal;
+        }
 
         log.info("[MM] speak_text: {} chars", text == null ? 0 : text.length());
         Timer.Sample sample = Timer.start(registry);
         try {
             byte[] mp3 = speechModel.call(text);
             String url = storage.store(mp3, "mp3");
-            collector.add(url);
+
+            // The script is stored as its own artifact. When narration comes
+            // out wrong it is the only way to tell a bad voice from a bad
+            // script — and the model writes this text itself, so it is not
+            // visible anywhere else.
+            String scriptUrl = storage.store(text.getBytes(StandardCharsets.UTF_8), "txt");
+            collector.add(Artifact.of(scriptUrl, Artifact.Kind.TEXT, abbreviate(text)));
+            collector.add(Artifact.of(url, Artifact.Kind.SPEECH, abbreviate(text)));
+
             record("speech", mp3.length, sample);
             return "Done — the audio has been generated and is playing for the user.";
 
         } catch (RuntimeException e) {
-            log.error("[MM] speak_text failed: {}", e.getMessage());
+            int failures = collector.recordFailure();
+            log.error("[MM] speak_text failed ({}/{}): {}",
+                    failures, MediaCollector.MAX_FAILURES, e.getMessage());
             record("speech", 0, sample);
-            return "ERROR: could not synthesize speech — " + e.getMessage();
+            return "ERROR: could not synthesize speech — " + e.getMessage()
+                    + ". Do NOT retry; tell the user this part failed.";
         }
+    }
+
+    /**
+     * The one stop condition the framework does not provide.
+     *
+     * @return the refusal to hand back to the model, or null to proceed
+     */
+    private String refuseIfBudgetSpent(String tool, String capability) {
+        if (!collector.budgetExhausted()) {
+            return null;
+        }
+        log.warn("[MM] {} refused — retry budget spent for this request", tool);
+        return "ERROR: generation already failed " + MediaCollector.MAX_FAILURES
+                + " times in this turn. STOP calling tools and tell the user you "
+                + "cannot " + capability + " right now.";
     }
 
     /**
      * Per-modality cost signal.
      *
      * gen_ai_client_token_usage only ever describes the CHAT leg. An image is
-     * billed per picture, speech per character, transcription per second of
-     * audio — so counting tokens reports zero for the most expensive calls in
-     * this module. `size` is a proxy for volume, not for price; the honest
-     * headline is the count, sliced by modality.
+     * billed per picture, speech per character, a Lyria song at a flat $0.08 —
+     * so counting tokens reports zero for the most expensive calls in this
+     * module. `size` is a proxy for volume, not price; the honest headline is
+     * the count, sliced by modality.
      */
     private void record(String modality, int bytes, Timer.Sample sample) {
         sample.stop(Timer.builder("mm.generation.duration")
