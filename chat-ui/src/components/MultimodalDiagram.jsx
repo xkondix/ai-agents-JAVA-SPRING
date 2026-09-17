@@ -21,8 +21,13 @@
  * genuinely different shapes of API behind five tools. Spring AI reaches
  * three of them; music and video are hand-written HTTP.
  *
- * Video is drawn dimmed because it is off by default (multimodal.video.enabled) —
- * $1.60 for four seconds.
+ * TWO THINGS ARE DRAWN DIMMED because they are switched off, and a diagram
+ * that promises a capability the running system does not have is worse than
+ * one that leaves it out:
+ *   - video, at $1.60 per four seconds (multimodal.video.enabled=false)
+ *   - voice input, whose transcription model slug was never confirmed
+ * Both keep their place so the shape of the design stays legible; neither
+ * claims to work.
  */
 
 const C = {
@@ -69,10 +74,10 @@ export default function MultimodalDiagram() {
         </marker>
       </defs>
 
-      <Box x={70} y={8} w={240} h={44} label="Text · photo · voice" sub="voice transcribed first" />
+      <Box x={70} y={8} w={240} h={44} label="Text · photo" sub="voice built, switched off" />
       <Arrow d="M190 52 L190 72" />
 
-      <Box x={70} y={74} w={240} h={48} label="Router" sub="cheap model, sees no pixels" />
+      <Box x={70} y={74} w={240} h={48} label="Router" sub="gpt-4o-mini, sees no pixels" />
       <rect x={70} y={74} width={240} height={48} rx="9"
             fill="none" stroke={C.control} strokeWidth="1.5" />
 
@@ -85,7 +90,7 @@ export default function MultimodalDiagram() {
         tools · own model AND own protocol
       </text>
 
-      <Box x={76} y={170} w={228} h={42} label="analyze_image" sub="vision · chat API" accent={C.llm} />
+      <Box x={76} y={170} w={228} h={42} label="analyze_image" sub="gpt-4o · chat API" accent={C.llm} />
       <Box x={76} y={218} w={228} h={42} label="generate_image" sub="image · images API" accent={C.llm} />
       <Box x={76} y={266} w={228} h={42} label="speak_text" sub="tts · audio API" accent={C.llm} />
       <Box x={76} y={314} w={228} h={42} label="generate_music" sub="Lyria · SSE stream" accent={C.llm} />

@@ -8,22 +8,29 @@ Renamed from `code-mcp-server`. The name change also changed
 `spring.application.name`, which becomes `service.name` in OTLP — traces, logs
 and metrics from this module appear under the new service name, not the old one.
 
-## Stack — deliberately different from the rest of the project
+## Stack — standalone, not different any more
 
 | | this module | rest of the project |
 |---|---|---|
-| Spring Boot | 4.0.0 | 3.5.0 |
-| Spring AI | 2.0.0 | 1.1.4 |
+| Spring Boot | 4.0.4 | 4.0.4 |
+| Spring AI | 2.0.0 | 2.0.0 |
 | Parent POM | `spring-boot-starter-parent` | project parent |
-| Reactor | **excluded** (standalone) | included |
+| Reactor | **excluded** | included |
 
-It is the migration pilot for Spring AI 2.0. It stays out of the reactor build
-so a broken migration cannot break the other nine modules — the parent POM keeps
-the entry commented out:
+It was the **migration pilot** for Boot 4 / Spring AI 2.0: it moved first,
+alone, so a broken migration could not break the other ten modules. That
+migration is finished and the version columns now match — what remains is the
+build isolation, which is still useful (this JAR is launched by Claude Desktop
+and has a different lifecycle from everything else). The parent POM keeps the
+entry commented out:
 
 ```xml
 <!-- <module>claude-mcp-server</module> -->
 ```
+
+A root `mvn clean install` therefore does **not** rebuild this module. That is
+the single most common reason for "I changed the code and nothing happened" —
+see Building below.
 
 `spring-boot-starter-parent` is not cosmetic here: it sets `-parameters`.
 Without that flag the generated JSON schema publishes arguments as `arg0`/`arg1`
@@ -127,12 +134,15 @@ and corrupt the JSON-RPC stream.
 | `move_directory` | Moves/renames a directory |
 | `delete_file` | Deletes a file (`confirm` must be `DELETE`) |
 
-Access is sandboxed by `claude-mcp.project-root` (path traversal is rejected),
+Access is sandboxed by `claude-mcp.project-root` (path traversal is rejected
+lexically **and** via `toRealPath()` against symlinks),
 `claude-mcp.allowed-extensions` and `claude-mcp.ignored-dirs` in
-`application.yml`. The prefix must match
-`@ConfigurationProperties(prefix = "claude-mcp")` on `ClaudeMcpProperties` — a
-mismatch binds nothing, logs nothing, and silently falls back to the defaults
-hardcoded in the record.
+`application.yml`. The extension allow-list applies to read, write, create,
+move and delete on every path involved; ignored dirs are unreachable by direct
+path, not merely skipped in walks; reads are capped at 2 MB. The prefix must
+match `@ConfigurationProperties(prefix = "claude-mcp")` on
+`ClaudeMcpProperties` — a mismatch binds nothing, logs nothing, and silently
+falls back to the defaults hardcoded in the record.
 
 Failures are returned to the model as `ERROR: ...` text rather than thrown. A
 readable message is more useful to a model than a protocol-level error it cannot
@@ -224,10 +234,10 @@ one-line way to lose all logs with no error message.
 ### Traces
 
 Each tool call becomes a `mcp_tool <name>` span carrying `gen_ai.tool.name`,
-`gen_ai.operation.name=execute_tool`, `mcp.tool.args`, `mcp.tool.result.length`
-and `framework=spring-ai-mcp-server` — the same label the agent modules use, so
-the existing Grafana panels can slice by it. `mcp.transport` is a *resource*
-attribute, set once for the whole service rather than repeated per span.
+`gen_ai.operation.name=execute_tool`, `mcp.tool.args` and `framework=spring-ai`
+— the same label the agent modules use, so the existing Grafana panels can
+slice by it. `mcp.transport` is a *resource* attribute, set once for the whole
+service rather than repeated per span.
 
 The span kind is **SERVER**, created via `tracer.spanBuilder().kind(...)` rather
 than `tracer.nextSpan()`. This is not pedantry: Tempo's metrics generator builds
@@ -244,15 +254,17 @@ meters below are recorded by hand in `CodeToolsService`.
 |---|---|---|
 | `mcp.tool.calls` | counter | `tool`, `outcome`, `framework` |
 | `mcp.tool.duration` | timer | `tool`, `outcome`, `framework` |
-| `mcp.tool.result.size` | distribution summary (chars) | `tool`, `framework` |
+| `mcp.tool.payload.size` | distribution summary (chars) | `tool`, `direction`, `framework` |
 
 `outcome` is derived from the `ERROR:` prefix of the returned text, because
 failures never propagate as exceptions. Counting thrown exceptions here would
 report a permanent 0% error rate while the model reads failures all day.
 
-`result.size` is the interesting one: it measures how many characters each tool
-feeds back into the model's context, which is the real cost of an MCP call and
-is invisible in latency alone.
+`payload.size` is the interesting one, and `direction` (`request` / `response`)
+is why it was renamed from `result.size`: it measures how many characters cross
+between the model and the tool in each direction, which is the real cost of an
+MCP call and is invisible in latency alone. In Prometheus the series are
+`mcp_tool_payload_size_chars_{sum,count,bucket}`.
 
 ### Logs need two extra pieces
 
@@ -275,7 +287,7 @@ and each failure would generate another. Telemetry must not report on itself.
 
 The appender comes from `io.opentelemetry.instrumentation`, a group Boot does
 **not** version-manage. The pom pins `2.21.0-alpha` because that instrumentation
-release targets OTel SDK `1.55.0`, the version Boot 4.0.0 ships. Re-check that
+release targets OTel SDK `1.55.0`, the version Boot 4 ships. Re-check that
 pairing when bumping Boot.
 
 ### Trace correlation

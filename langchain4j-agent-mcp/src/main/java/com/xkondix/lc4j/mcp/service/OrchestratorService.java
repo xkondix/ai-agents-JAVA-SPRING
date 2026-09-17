@@ -24,19 +24,41 @@ import java.util.UUID;
 /**
  * Orchestrator Agent — uses tools from MCP servers.
  *
- * The agent does not know (or care) that tools run in different processes:
- *   - get_game_stats, save_note, get_weather  → mcp-server      (port 8081)
- *   - read_file, write_file, search_in_files  → a second MCP server (optional —
- *     present only with lc4j.mcp.code-server.enabled=true)
+ * The agent does not know (or care) that tools run in a different process:
+ * get_game_stats, save_note, search_notes, delete_note and get_weather all
+ * live in mcp-server (port 8081, Streamable HTTP). It sees a flat list of
+ * tools and picks one. This is the core MCP orchestrator demo for
+ * Presentation 2.
  *
- * It just sees a flat list of tools and picks the right one.
- * This is the core MCP orchestrator demo for Presentation 2.
+ * ── THE SECOND MCP CLIENT IS OFF, AND STAYS OFF ────────────────────────────
+ *
+ * `lc4j.mcp.code-server.enabled` wires in a second McpClient to show that the
+ * flat tool list can span several servers. It is disabled by default and
+ * there is currently nothing for it to connect to: the file-tools server in
+ * this repo (`claude-mcp-server`) speaks **STDIO** and is launched by Claude
+ * Desktop, not by an HTTP client.
+ *
+ * The system prompt therefore does NOT list file tools. It used to — a
+ * leftover from when that server ran over HTTP on port 8086 — and an
+ * unavailable tool in a prompt is worse than no tool: the model offers it,
+ * tries to use it, and only then discovers it does not exist. The rule
+ * "say so instead of pretending" does not help, because from the model's
+ * point of view the prompt is the evidence.
  *
  * Observability: McpToolProvider is wrapped in TracingToolProvider (module
  * `common`, shared with patterns-langchain4j), so every tool execution shows
  * up as a "tool_call <n>" span in Tempo — the LC4j trace has the same
  * shape as Spring AI and raw-agent traces
  * (http post → chat → tool_call → chat).
+ *
+ * ── NO TRACE PROPAGATION HERE, ON PURPOSE ──────────────────────────────────
+ *
+ * This module does not inject the W3C trace context into MCP calls, so a tool
+ * call produces TWO separate traces: one for the agent, one for mcp-server.
+ * `spring-ai-agent-mcp` does propagate and shows `Services: 2` for the same
+ * operation. Same protocol, same transport, same tool — the difference is a
+ * client implementation decision, and having both side by side is the point.
+ * See OBSERVABILITY.md.
  *
  * ── MEMORY IS PER CONVERSATION, NOT PER PROCESS ─────────────────────────────
  *
@@ -67,14 +89,10 @@ public class OrchestratorService {
     private interface OrchestratorAssistant {
         @SystemMessage("""
                 You are an orchestrator agent.
-                You have access to tools provided by MCP servers, for example:
-                - mcp-server tools:      get_game_stats, save_note, search_notes,
-                                         delete_note, get_weather
-                - code-mcp-server tools (optional): read_file, list_files,
-                                         get_project_structure, search_in_files,
-                                         write_file, create_file, move_file, delete_file
-                Use the most appropriate available tool for each task. If a tool
-                is not available, say so instead of pretending to use it.
+                Your tools come from MCP servers running in other processes:
+                  get_game_stats, get_weather, search_notes, save_note, delete_note
+                Use the most appropriate available tool for each task. If no tool
+                fits, say so instead of pretending to use one.
                 Always explain which tool you chose and why.
                 For operations that modify data, always wait for human approval.
                 """)
@@ -94,10 +112,10 @@ public class OrchestratorService {
         codeMcpClient.ifPresentOrElse(
                 client -> {
                     clients.add(client);
-                    log.info("code-mcp-server client ENABLED — file tools available");
+                    log.info("second MCP client ENABLED — its tools join the same flat list");
                 },
-                () -> log.info("code-mcp-server client disabled "
-                        + "(lc4j.mcp.code-server.enabled=false) — file tools unavailable"));
+                () -> log.info("second MCP client disabled "
+                        + "(lc4j.mcp.code-server.enabled=false) — mcp-server tools only"));
 
         ToolProvider toolProvider = new TracingToolProvider(
                 McpToolProvider.builder().mcpClients(clients).build(),

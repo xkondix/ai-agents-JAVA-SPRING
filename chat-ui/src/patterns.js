@@ -46,7 +46,7 @@ export const FRAMEWORKS = [
 
 /**
  * Values are sent to the API verbatim — keep in sync with
- * common/src/main/java/com/xkondix/common/lang/TranslationLanguages.java
+ * common/src/main/java/com/xkondix/common/languages/TranslationLanguages.java
  *
  * 'Mixed' is not a language: the backend turns it into an instruction to
  * blend ALL supported languages in one text (a word or two from each).

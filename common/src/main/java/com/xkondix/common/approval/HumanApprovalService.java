@@ -17,9 +17,14 @@ import java.util.function.Supplier;
  * Reusable human-in-the-loop gate.
  *
  * Used by mcp-server (save_note / delete_note over MCP) and by both
- * patterns modules (getSecretRumors). NOT used by code-mcp-server: it runs
- * over STDIO, where no HTTP endpoint can unblock a waiting tool call, so
- * approvals are disabled there by design.
+ * patterns modules (getSecretRumors).
+ *
+ * Two modules deliberately have no approval flow:
+ *   - claude-mcp-server runs over STDIO, where there is no second channel for
+ *     a decision and blocking the JSON-RPC thread would deadlock the stream;
+ *   - multimodal-lab does nothing destructive — its guardrails are a feature
+ *     flag on video and a retry budget, which protect against cost rather
+ *     than against consequence.
  *
  * Two APIs:
  *   gate(...)           — generic, preferred: wraps the guarded action so a
