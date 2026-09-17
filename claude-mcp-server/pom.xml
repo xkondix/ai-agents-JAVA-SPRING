@@ -6,8 +6,13 @@
     <modelVersion>4.0.0</modelVersion>
 
     <!-- STANDALONE MODULE — deliberately NOT part of ai-agents-JAVA-SPRING.
-         It runs Spring AI 2.0 / Spring Boot 4 while the rest of the project
-         stays on Spring AI 1.1.4 / Boot 3.5.
+
+         It was the MIGRATION PILOT: it moved to Spring Boot 4 / Spring AI 2.0
+         first and alone, so a broken migration could not take the reactor down
+         with it. The rest of the project has since followed, so the versions
+         now match — what remains is the build isolation, which is still worth
+         keeping because this JAR is launched by Claude Desktop and has its own
+         lifecycle. A root `mvn clean install` does not rebuild it.
 
          spring-boot-starter-parent is not cosmetic here: it sets -parameters.
          @McpToolParam has no `name` attribute, so reflection metadata is the

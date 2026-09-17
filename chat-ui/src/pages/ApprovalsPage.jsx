@@ -9,13 +9,28 @@ import { usePendingApprovals } from '../hooks/usePendingApprovals.js'
 import { approveOperation, rejectOperation, APPROVAL_SOURCES } from '../api/approvalsApi.js'
 
 // ── Tool type config ───────────────────────────────────────────────────────
+//
+// Only the first three types are emitted today. mcp-server raises SAVE_NOTE
+// and DELETE_NOTE; both patterns modules raise SECRET_RUMORS.
+//
+// The file-operation entries below are DORMANT, not stale. They were used
+// when the file-tools MCP server ran over HTTP; it is now claude-mcp-server,
+// which speaks STDIO and therefore has no approval flow at all — over STDIO
+// there is no second channel for a human decision, and blocking the JSON-RPC
+// thread would deadlock the stream (see claude-mcp-server/README.md).
+//
+// They stay because the gate in `common` is generic: any module that wires
+// HumanApprovalService can raise these types and the UI will render them
+// correctly. Deleting them would make adding an approval a two-file change
+// for no reason. An unknown type falls back to DEFAULT_CONFIG anyway, so the
+// page never breaks on one it has not seen.
 const TOOL_CONFIG = {
   // mcp-server knowledge base operations
   SAVE_NOTE:   { label: 'Save Note',     icon: StickyNote,  color: 'text-amber-400',  bg: 'bg-amber-500/10',  border: 'border-amber-500/30'  },
   DELETE_NOTE: { label: 'Delete Note',   icon: Trash2,      color: 'text-red-400',    bg: 'bg-red-500/10',    border: 'border-red-500/30'    },
   // patterns modules — confidential data disclosure
   SECRET_RUMORS: { label: 'Disclose Secret Rumors', icon: EyeOff, color: 'text-fuchsia-400', bg: 'bg-fuchsia-500/10', border: 'border-fuchsia-500/30' },
-  // code-mcp-server file operations (reference)
+  // dormant — see the note above
   WRITE_FILE:  { label: 'Write File',    icon: FileText,    color: 'text-amber-400',  bg: 'bg-amber-500/10',  border: 'border-amber-500/30'  },
   CREATE_FILE: { label: 'Create File',   icon: FilePlus,    color: 'text-blue-400',   bg: 'bg-blue-500/10',   border: 'border-blue-500/30'   },
   MOVE_FILE:   { label: 'Move / Rename', icon: FolderInput, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30' },

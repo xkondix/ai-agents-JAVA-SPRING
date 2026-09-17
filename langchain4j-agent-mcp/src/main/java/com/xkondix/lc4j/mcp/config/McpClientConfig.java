@@ -5,6 +5,7 @@ import dev.langchain4j.mcp.client.McpClient;
 import dev.langchain4j.mcp.client.transport.McpTransport;
 import dev.langchain4j.mcp.client.transport.http.StreamableHttpMcpTransport;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -67,9 +68,14 @@ public class McpClientConfig {
      * Second MCP server — kept for the orchestrator demo (one agent, several
      * MCP servers) and DISABLED BY DEFAULT.
      *
-     * claude-mcp-server is not a candidate for it: that module runs over STDIO
-     * for Claude Desktop and is not reachable over HTTP at all. Point this at
-     * any second Spring AI MCP server started with protocol: STREAMABLE.
+     * There is currently NOTHING in this repo for it to connect to, and the
+     * URL below is a placeholder rather than an address that ever worked.
+     * `claude-mcp-server` is not a candidate: it speaks STDIO for Claude
+     * Desktop and is not reachable over HTTP at all. Point this at any second
+     * Spring AI MCP server started with protocol: STREAMABLE — and note that
+     * the system prompt in OrchestratorService does not advertise its tools,
+     * because telling a model about tools it does not have is worse than
+     * telling it nothing.
      *
      * Left disabled because the eager initialisation above applies here too —
      * a dead port would stop the whole application from starting:
@@ -77,19 +83,24 @@ public class McpClientConfig {
      *     mcp:
      *       code-server:
      *         enabled: true
+     *         url: http://localhost:9099/mcp
      */
     @Bean(name = "codeMcpClient")
     @ConditionalOnProperty(name = "lc4j.mcp.code-server.enabled", havingValue = "true")
-    public McpClient codeMcpClient() {
+    public McpClient codeMcpClient(
+            @Value("${lc4j.mcp.code-server.url:http://localhost:9099/mcp}") String url) {
+
+        log.info("second MCP client connecting to {}", url);
+
         McpTransport transport = new StreamableHttpMcpTransport.Builder()
-                .url("http://localhost:8086/mcp")
+                .url(url)
                 .logRequests(true)
                 .logResponses(true)
                 .build();
 
         return new DefaultMcpClient.Builder()
                 .transport(transport)
-                .clientName("langchain4j-code-client")
+                .clientName("langchain4j-second-client")
                 .clientVersion("1.0")
                 .build();
     }

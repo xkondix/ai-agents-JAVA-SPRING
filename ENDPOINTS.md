@@ -47,8 +47,31 @@ underneath. Details and diagrams: `PATTERNS.md`.
 | GET | `/api/v1/patterns/chain?season=&language=` | Prompt chaining; `language` defaults to `English`, accepts `Mixed` |
 | POST | `/api/v1/patterns/routing` | Routing — body is the question; the rumors branch is approval-gated |
 | GET | `/api/v1/patterns/parallel` | Parallelization — scores rumor candidates concurrently |
-| GET | `/api/v1/patterns/evaluator?season=` | Evaluator-optimizer loop (exit at score ≥ 0.8, max 4 iterations) |
+| GET | `/api/v1/patterns/evaluator?season=` | Evaluator-optimizer loop (exit at score ≥ 0.85, max 4 iterations) |
 | POST | `/api/v1/patterns/orchestrator` | Orchestrator-workers — body is the task |
+
+### multimodal-lab (port 8089)
+One router agent, five tools, four provider protocols. **Spring AI only** —
+this is the module where the framework comparison stops, because LangChain4j
+has no equivalent audio story. Details: `multimodal-lab/` class comments.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/multimodal` | Multipart: `question`, `image`, `audio`, `conversationId`. Returns the answer plus the URLs of everything produced |
+| GET | `/api/v1/multimodal/artifacts?conversationId=&scope=` | Gallery. `scope=all` (default) merges the Redis index with a disk scan; `scope=conversation` narrows to one thread |
+| GET | `/api/v1/multimodal/media/**` | Serves stored artifacts, `Content-Disposition: inline` |
+| DELETE | `/api/v1/multimodal/memory/{conversationId}` | Clears the model's memory. Files and gallery are kept |
+| DELETE | `/api/v1/multimodal/artifacts/{conversationId}` | Clears the gallery index only. Files stay on disk |
+
+Two separate resets on purpose: wiping what the model remembers and throwing
+away what it made are different intentions.
+
+> Voice input (`audio`) is implemented end to end but **switched off in the
+> UI**: the OpenRouter transcription slug was never confirmed and the endpoint
+> answered 500. The backend path stays because the reason transcription cannot
+> be a tool — a voice note *is* the question, so the model would have to know
+> its contents to decide to read it — is one of the clearer points the module
+> makes.
 
 ### Approval REST API
 Same contract everywhere, so the Chat UI talks to all sources the same way.
@@ -59,9 +82,11 @@ Same contract everywhere, so the Chat UI talks to all sources the same way.
 | POST | `/approvals/{id}/approve` | as above — unblocks the waiting tool call |
 | POST | `/approvals/{id}/reject` | as above — the tool returns a refusal to the model |
 
-> claude-mcp-server has **no** approval flow by design: over STDIO there is no
+> `claude-mcp-server` has **no** approval flow by design: over STDIO there is no
 > second channel for a human decision, and blocking the JSON-RPC thread would
 > deadlock the stream. See `claude-mcp-server/README.md`.
+> `multimodal-lab` has none either — nothing it does is destructive; its
+> guardrails are a feature flag and a retry budget, not a human gate.
 
 ### MCP protocol endpoints
 | Server | Endpoint | Transport |
@@ -122,6 +147,29 @@ walks; reads are capped at 2 MB.
 Same data in both modules, exposed with each framework's annotations
 (`@Tool`/`@P` in LangChain4j, `@Tool`/`@ToolParam` in Spring AI).
 
+### multimodal-lab — one namespace, four protocols
+The router sees a flat list of tools and has no idea they come from three
+beans or that each speaks a different API shape. That asymmetry is the point
+of the module.
+
+| Tool | Model | Protocol | Cost |
+|------|-------|----------|------|
+| `analyze_image` | `gpt-4o` (own setting) | `/chat/completions` via Spring AI | cents |
+| `generate_image` | `gpt-image-1` | `/images/generations` via Spring AI | cents |
+| `speak_text` | `x-ai/grok-voice-tts-1.0` | `/audio/speech` via Spring AI | per character |
+| `generate_music` | Lyria 3 pro / clip | streaming `/chat/completions`, **raw HTTP** | $0.08 / $0.04 flat |
+| `generate_video` | `google/veo-3.1` | job queue `/videos`, **raw HTTP** | ~$1.60 per 4 s |
+
+`generate_video` is behind `multimodal.video.enabled` and **off by default**;
+when the bean is absent the router's system prompt does not mention video at
+all, because a tool the model can see but cannot use gets offered to the user
+and then fails.
+
+All five check a shared **retry budget** (`MediaCollector`, 2 failures per
+request) before doing any work. `ToolCallingAdvisor` has no failure semantics —
+a tool answering `ERROR:` has, as far as the loop is concerned, answered — and
+one request once produced over a hundred calls to a single failing tool.
+
 ---
 
 ## 3. Observability
@@ -159,13 +207,15 @@ look empty at short ranges.
 | raw-agent | hand-written (`Tracer` API: `chat <model>`, `tool_call <n>` + `agent.loop.iteration`) | hand-written in `LlmClient`, pre-registered at 0 on startup |
 | langchain4j-* | `GenAiMetricsChatModelListener` (chat spans, optional `gen_ai.prompt`/`gen_ai.completion`) + `TracingToolProvider` (tool spans) | same listener, `framework=langchain4j`, pre-registered at 0 on startup |
 | spring-ai-* | automatic — `chat_client → tool_calling → advisors → chat → POST` plus `execute_tool <n>` (`spring.ai.tool.*` attributes) | automatic (`gen_ai.*`, `spring_ai_tool_*`) |
+| patterns-spring-ai | + hand-written `evaluator_iteration N` spans carrying `evaluator.score` | — |
 | mcp-server | `mcp_tool <n>` (SERVER kind, `McpToolTelemetry`) | `mcp_tool_calls_total`, `mcp_tool_duration_milliseconds_*`, `mcp_tool_payload_size_chars_*` |
 | claude-mcp-server | same, own copy in `CodeToolsService` | same names, `framework=spring-ai` |
+| multimodal-lab | automatic for the three Spring AI tools; **none** for music and video | `mm_generation_*` for all five — the only accounting for the two that bypass ChatClient |
 
 **Spring AI observations exist only with the auto-configured `ChatClient.Builder`.**
 `ChatClient.builder(chatModel)` hard-codes `ObservationRegistry.NOOP` and
 silently drops every ChatClient-level observation, including tool spans and
-`spring_ai_tool_*` — all four ChatClients in the project inject the builder.
+`spring_ai_tool_*` — all ChatClients in the project inject the builder.
 
 ### Metric names (verified against Prometheus, 2026-09-02)
 - `gen_ai_client_token_usage_total` — tags `job`, `gen_ai_request_model`, `gen_ai_token_type`
@@ -178,9 +228,21 @@ silently drops every ChatClient-level observation, including tool spans and
 - `gen_ai_client_tool_requests_total` — tool calls the model asked for (raw, LC4j)
 - `spring_ai_tool_milliseconds_*` — tool executions (Spring AI), tag `spring_ai_tool_definition_name`
 - `mcp_tool_*` — MCP server side, tags `tool`, `outcome`, `direction`
+- `mm_generation_calls_total`, `mm_generation_duration_seconds_*`,
+  `mm_generation_size_chars_*` — multimodal-lab, tag `modality`
+  (`image`, `speech`, `music`, `video`, `vision`)
+- `mm_generation_cost_usd_*` — **video only**, and the only metric in the
+  project carrying a real invoice figure rather than an estimate; OpenRouter
+  returns it in `usage.cost` on the job poll
 - `http_server_requests_milliseconds_*`, `jvm_*`
 
 No `*_max` series reaches Prometheus over OTLP; panels use sum/count.
+
+**Tokens stop describing cost in multimodal-lab.** An image bills per picture,
+speech per character, a Lyria song at a flat rate, video per generated second —
+and music and video do not go through `ChatClient` at all, so they produce no
+`gen_ai` span and no token counters. The modality that costs the most is the
+one standard instrumentation never sees.
 
 ### Tracing notes
 - GenAI Semantic Conventions on each LLM span: `gen_ai.request.model`,
@@ -190,6 +252,8 @@ No `*_max` series reaches Prometheus over OTLP; panels use sum/count.
   / `log-completion` → Loki, trace-correlated); LangChain4j puts it on the span
   (`xkondix.observability.genai.include-prompt` / `include-completion` → Tempo).
   Same data, two signals — deliberate contrast.
+  **Not enabled in multimodal-lab**: an attached image would be base64 in a span
+  attribute, and Tempo drops oversized attributes silently.
 - **MCP trace propagation**: `spring-ai-agent-mcp` propagates W3C trace context
   into MCP calls (`McpTracePropagationConfig`), so mcp-server spans appear inside
   the agent's trace (`Services: 2`). The MCP transport sends on its own worker
@@ -205,18 +269,34 @@ Provisioned from `grafana/provisioning/dashboards/` (reloaded every 30 s) and
 (`GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH`). Rows: Preflight · Cost ·
 Performance · MCP servers · Traces · Reliability · JVM.
 
+> **Not yet built:** a row for `mm_generation_*`. The metrics are pushed and
+> nothing draws them, `mm_generation_cost_usd` included.
+
 ### Infrastructure ports (docker-compose)
-Default profile:
+
+Three containers, all of them used. `docker compose up -d` starts everything.
 
 | Service | Port | Notes |
 |---------|------|-------|
-| Ollama | 11434 | Local LLM API (`local` Spring profile only) |
 | Grafana | 3100 | admin/admin |
 | OTLP gRPC / HTTP | 4317 / 4318 | Telemetry ingest |
 | Prometheus | 9090 | Metrics UI |
 | Tempo | 3201 | Trace store API |
+| Redis | 6379 | **Used by multimodal-lab** — chat memory and the gallery index |
+| Ollama | 11434 | Local LLM API (`local` Spring profile only) |
 
-`--profile extras` (unused by any module today): Redis 6379, Chroma 8000, Jira 8080.
+> Chroma, Jira and its Postgres used to sit behind a `--profile extras`,
+> reserved for RAG and integration demos that were never built. Removed —
+> reserved infrastructure is a maintenance surface, not a plan. Redis moved
+> out of that profile into the default at the same time, because it stopped
+> being reserved: `multimodal-lab` uses it, and while it sat behind the
+> profile a plain `docker compose up` left it down and the module logged
+> "Unable to connect to Redis" on every request.
+
+> On Windows use `127.0.0.1`, not `localhost`, for Redis. `localhost` resolves
+> to `::1` first and Docker Desktop publishes on IPv4 only, so a healthy
+> container still answers "Unable to connect to Redis". The same resolution
+> order shows up in the OTLP exporter's error message.
 
 ---
 
@@ -232,8 +312,10 @@ Default profile:
                                 │                            │             ▲
                                 └──── MCP / Streamable HTTP ─┴─────────────┘
 
-        patterns-langchain4j (8087)   patterns-spring-ai (8088)
-                    └──────────── common ────────────┘
+   patterns-langchain4j (8087)   patterns-spring-ai (8088)   multimodal-lab (8089)
+              └──────────────── common ───────────────────────────┘
+                                                                   │
+                                                          Redis (memory + gallery)
 
    claude-mcp-server — standalone (own parent, outside the reactor, no `common`),
                        STDIO ⇄ Claude Desktop
@@ -263,8 +345,9 @@ LangChain4j 1.16.3, Spring AI 2.0.0, Java 21):
 | langchain4j-agent-mcp | + langchain4j-mcp (`StreamableHttpMcpTransport`) |
 | spring-ai-agent-local | spring-ai ollama + openai starters (provider chosen per profile) |
 | spring-ai-agent-mcp | + spring-ai MCP client starter (`streamable-http` connections in yml) |
-| patterns-langchain4j | langchain4j + agentic (DSL: sequence/loop builders) |
+| patterns-langchain4j | langchain4j + agentic (DSL: sequence / loop / conditional builders) |
 | patterns-spring-ai | spring-ai starters (no workflow API — patterns in plain Java) |
+| multimodal-lab | spring-ai openai starter (chat, vision, image, speech, transcription) + `spring-ai-starter-model-chat-memory-repository-redis`; music and video use `java.net.http` directly |
 | mcp-server | `spring-ai-starter-mcp-server-webmvc` (`protocol: STREAMABLE`), virtual threads |
 | claude-mcp-server | `spring-boot-starter-parent` (own), spring-ai MCP server starter in STDIO mode, no web |
 | all reactor modules | starter-actuator, springdoc, **spring-boot-starter-opentelemetry** (traces + logs + OTLP metrics), micrometer-registry-prometheus (from parent) |

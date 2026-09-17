@@ -20,9 +20,24 @@ import org.springframework.stereotype.Service;
  * Passing ToolCallbacks into .tools(...) silently registers NOTHING —
  * the model then answers from imagination instead of calling tools.
  *
- * Connected MCP servers (configured in application.yml):
- *   - java-mcp-server  (port 8081) — game stats, knowledge base, weather
- *   - code-mcp-server  (port 8086) — enable in yml when it runs over HTTP
+ * Connected MCP servers (configured in application.yml, `streamable-http`):
+ *   - java-mcp-server (port 8081) — game stats, knowledge base, weather
+ *
+ * There is only one. The repo's other MCP server, `claude-mcp-server`, speaks
+ * STDIO and is launched by Claude Desktop, so no HTTP client can reach it —
+ * an earlier version of this comment listed it on port 8086, which no longer
+ * exists.
+ *
+ * ── THIS MODULE PROPAGATES THE TRACE CONTEXT; ITS TWIN DOES NOT ────────────
+ *
+ * `McpTracePropagationConfig` injects W3C `traceparent` into every MCP
+ * request, so mcp-server's spans land inside this agent's trace and Tempo
+ * reports `Services: 2`. `langchain4j-agent-mcp` deliberately does not, and
+ * the same tool call there produces two unrelated traces.
+ *
+ * Same protocol, same transport, same tool, different picture — which is the
+ * clearest way to say that context propagation is a client implementation
+ * decision and not a property of MCP. See OBSERVABILITY.md.
  */
 @Slf4j
 @Service

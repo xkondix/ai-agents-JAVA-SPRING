@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.xkondix</groupId>
+        <artifactId>ai-agents-JAVA-SPRING</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>multimodal-lab</artifactId>
+    <name>Multimodal Lab - one router, four models, routed by tool choice</name>
+    <description>
+        The only module in this project that is NOT implemented twice.
+
+        A cheap router agent that never sees a pixel or a byte: every
+        modality is a @Tool, and each tool talks to its own model. "Here is a
+        photo of the 2007 squad — draw a modern kit for them and read the
+        result out loud" becomes analyze_image, then generate_image, then
+        speak_text, in an order nobody wrote down.
+
+        The multi-step part is free: in Spring AI 2.0 tool execution lives in
+        ToolCallingAdvisor, which keeps calling the model until it stops
+        asking for tools. There is no hand-written loop here — unlike
+        patterns-spring-ai, where the loop IS the point.
+
+        SPRING AI ONLY, ON PURPOSE. Everywhere else the same thing is built
+        twice to compare the frameworks. Here that comparison would be
+        dishonest: Spring AI ships ImageModel, TextToSpeechModel and
+        TranscriptionModel as first-class abstractions and LangChain4j has no
+        equivalent audio story. This is where the two stop being
+        interchangeable — a more useful slide than a sixth side-by-side.
+
+        Port: 8089
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- One starter covers all four modalities. Verified in Spring AI
+             2.0.0: OpenAiImageModel, OpenAiAudioSpeechModel (implements
+             TextToSpeechModel) and OpenAiAudioTranscriptionModel (implements
+             TranscriptionModel) all live in spring-ai-openai and all build
+             their client through OpenAiSetup, which honours base-url — so
+             they route to OpenRouter exactly like chat does. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+
+        <!-- Chat memory in Redis rather than in a field.
+             Conversations here carry references to files on disk, so losing
+             them on restart is worse than in the other modules: the artifacts
+             survive and the thread that produced them does not. The starter
+             pulls spring-boot-starter-data-redis; the container is already in
+             docker-compose on 6379. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-chat-memory-repository-redis</artifactId>
+        </dependency>
+
+        <!-- Actuator: endpoints AND the condition that enables OTLP log export
+             (ConditionalOnEnabledLoggingExport). Do not remove. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.xkondix</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
