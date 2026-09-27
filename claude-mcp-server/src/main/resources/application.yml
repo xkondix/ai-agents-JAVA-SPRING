@@ -24,7 +24,10 @@ spring:
         version: 2.0.0
         instructions: >
           Read, search and edit files of the ai-agents-JAVA-SPRING project.
-          All paths are relative to the project root.
+          Resources expose the project's documentation, per-module configuration
+          and a computed module inventory; prompts carry the project's own
+          checklists for dependency migration, adding MCP tools and diagnosing
+          missing telemetry. All paths are relative to the project root.
         # VERIFIED against McpServerProperties in spring-ai v2.0.0:
         #   private boolean stdio = false;                       <- default OFF
         #   private ServerProtocol protocol = STREAMABLE;
@@ -38,13 +41,36 @@ spring:
         #     default and never set in this file.
         stdio: true
         type: SYNC
+        # ── ALL FOUR SERVER-SIDE PRIMITIVES ARE ON ──────────────────────────
+        #
+        # These flags decide what the server ADVERTISES in its capabilities
+        # handshake; the annotation scanner below decides what actually exists.
+        # The two are configured independently, which is how a server ends up
+        # announcing a capability it cannot serve — mcp-server (8081) still
+        # advertises resources and prompts and registers none, so a client
+        # calling resources/list gets an empty array back from a server that
+        # said it had some.
+        #
+        # Here they were all false while only tools existed, which was honest.
+        # They are true now because ProjectResources, ProjectPrompts and
+        # ProjectCompletions exist:
+        #   tool       -> CodeToolsService            (9 tools)
+        #   resource   -> ProjectResources            (2 concrete + 2 templates)
+        #   prompt     -> ProjectPrompts              (4 prompts)
+        #   completion -> ProjectCompletions          (3 completions)
+        #
+        # Turning one of these off does NOT remove the methods; it hides them
+        # from the handshake, and a client that respects capabilities will stop
+        # asking. Useful for demonstrating the difference between "registered"
+        # and "advertised" — which is the whole point above.
         capabilities:
           tool: true
-          resource: false
-          prompt: false
-          completion: false
+          resource: true
+          prompt: true
+          completion: true
         annotation-scanner:
-          enabled: true            # discovers @McpTool beans; no manual registration
+          enabled: true            # discovers @McpTool/@McpResource/@McpPrompt/
+                                   # @McpComplete beans; no manual registration
 
 logging:
   # Nothing may reach stdout. Two independent guarantees:
@@ -68,8 +94,8 @@ logging:
     # invisible, so there was no way to tell whether the exporter had started.
     io.micrometer: INFO
     io.opentelemetry: INFO
-    # Registration of annotated tools is logged here — the fastest way to
-    # confirm the scanner found all nine methods.
+    # Registration of annotated primitives is logged here — the fastest way to
+    # confirm the scanner found the tools, resources, prompts and completions.
     org.springframework.ai.mcp: INFO
   file:
     # Relative to the working directory, which Claude Desktop does NOT set to
@@ -83,6 +109,11 @@ logging:
 # @ConfigurationProperties(prefix = "claude-mcp") on ClaudeMcpProperties — a
 # mismatch binds nothing, logs nothing, and silently falls back to the
 # defaults hardcoded in the record.
+#
+# The sandbox covers resources too: ProjectResources reads through FileService,
+# so a document or module config outside the project root is rejected by the
+# same guard as a tool call. Resources are a different primitive, not a
+# different door.
 claude-mcp:
   project-root: C:\Users\konra\Desktop\ai-agents-JAVA-SPRING
   allowed-extensions:
@@ -127,6 +158,12 @@ claude-mcp:
 # The Boot 3 spellings are NOT kept as a fallback: an unknown property is
 # ignored in silence, so "both, whichever wins" only guarantees that a future
 # reader cannot tell which one is live.
+#
+# TOOLS AND THE OTHER PRIMITIVES ARE MEASURED SEPARATELY:
+#   mcp_tool_*       -> CodeToolsService        (calls, duration, payload.size)
+#   mcp_primitive_*  -> McpPrimitiveTelemetry   (resources, prompts, completions)
+# Folding resource reads into mcp_tool_calls_total would have kept every
+# existing Grafana query valid while quietly changing what each number means.
 management:
   tracing:
     enabled: true
