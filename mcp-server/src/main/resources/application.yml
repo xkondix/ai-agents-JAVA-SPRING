@@ -36,6 +36,39 @@ spring:
         protocol: STREAMABLE
         streamable-http:
           mcp-endpoint: /mcp   # explicit; this is also the default
+
+        # ── CAPABILITIES: ADVERTISE ONLY WHAT EXISTS ──────────────────────
+        #
+        # These flags are what the server announces in the MCP handshake. The
+        # annotation scanner decides what is actually REGISTERED. The two are
+        # configured independently, and that is how a server ends up promising
+        # something it cannot deliver.
+        #
+        # This file used to set none of them, so the defaults applied and the
+        # startup log read:
+        #
+        #   Enable tools capabilities, notification: true
+        #   Registered tools: 5
+        #   Enable resources capabilities, notification: true     <- no resources
+        #   Enable prompts capabilities, notification: true       <- no prompts
+        #
+        # A client that respects capabilities would then call resources/list
+        # and prompts/list on every connect and get an empty array back from a
+        # server that had just said it had some. Nothing errors; the client
+        # simply does pointless work and shows the user an empty menu.
+        #
+        # This server exposes TOOLS ONLY, so it now says exactly that.
+        # claude-mcp-server is the one with resources, prompts and completions
+        # — and it turns those flags on because it has something behind them.
+        #
+        # The pair is worth a slide: one server advertising what it lacks, one
+        # exposing a capability (completion) that Claude Desktop never asks
+        # for. Both are silent mismatches, in opposite directions.
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
   jackson:
     # JACKSON 3 MOVED DATE/TIME FLAGS OUT OF SerializationFeature.
     # This was `spring.jackson.serialization.write-dates-as-timestamps` and it
@@ -107,4 +140,6 @@ logging:
     io.modelcontextprotocol: INFO
     # Transport registration is logged here. If /mcp ever 404s again, this is
     # the first place to look — it shows which transport provider bean won.
+    # Capability lines appear here too: compare "Enable X capabilities" with
+    # "Registered X: N" on every start — they are set independently.
     org.springframework.ai.mcp.server: INFO
