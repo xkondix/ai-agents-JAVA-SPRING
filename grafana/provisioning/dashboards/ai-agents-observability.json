@@ -7,7 +7,7 @@
   "timezone": "browser",
   "time": { "from": "now-1h", "to": "now" },
   "refresh": "10s",
-  "description": "Three instrumentation approaches (raw / LangChain4j / Spring AI) on one set of panels. CONVENTIONS: (1) every rate()/increase() query carries interval=1m \u2014 Micrometer PUSHES every 60 s and Grafana's default 15 s assumption makes $__rate_interval too narrow to hold two samples; (2) all timeseries use palette-classic-by-name so a module keeps its colour on every panel; (3) grouping is by job (service.name), never by the framework tag \u2014 Spring AI series carry no framework label; (4) no query uses a *_max series \u2014 Micrometer puts max into the OTLP histogram point, but the collector-to-Prometheus path only materialises _sum, _count and _bucket. KNOWN BLIND SPOT: Micrometer creates counters lazily on first use, so the first push of a fresh process already carries a non-zero value and Prometheus never sees the series at 0 \u2014 rate()/increase() return 0 for a module's FIRST request after a restart. Send one warm-up request to every agent before a demo.",
+  "description": "Three instrumentation approaches (raw / LangChain4j / Spring AI) on one set of panels. CONVENTIONS: (1) every rate()/increase() query carries interval=1m \u2014 Micrometer PUSHES every 60 s and Grafana's default 15 s assumption makes $__rate_interval too narrow to hold two samples; (2) timeseries use palette-classic-by-name so a module keeps its colour on every panel \u2014 EXCEPT where the comparison is not between modules but between two sides of one thing, and then the colour encodes that instead (see 'MCP payload per call'); (3) grouping is by job (service.name), never by the framework tag \u2014 Spring AI series carry no framework label; (4) no query uses a *_max series \u2014 Micrometer puts max into the OTLP histogram point, but the collector-to-Prometheus path only materialises _sum, _count and _bucket; (5) EVERY panel answers for the selected time range \u2014 a number that ignores the range picker is a number nobody can trust, so cumulative counters are read with increase(), not max_over_time, except where a panel exists precisely to survive the blind spot below (Preflight 'reported LLM metrics'); (6) every bar gauge sets min 0 \u2014 with an auto minimum Grafana scales the bars to the DATA, so the smallest value always renders empty and the largest always renders full, which turns 1 and 2 into 'none' and 'max'. KNOWN BLIND SPOT: Micrometer creates counters lazily on first use, so the first push of a fresh process already carries a non-zero value and Prometheus never sees the series at 0 \u2014 rate()/increase() return 0 for a module's FIRST request after a restart. Send one warm-up request to every agent before a demo. THIS FILE IS THE DASHBOARD: it is provisioned from grafana/provisioning/dashboards and reloaded every 30 s, so edits made in the Grafana UI are overwritten on the next reload. Change the JSON, not the browser.",
   "templating": {
     "list": [
       {
@@ -49,7 +49,7 @@
     {
       "type": "stat",
       "title": "Seconds since last metrics push, per module",
-      "description": "time() minus the timestamp of the newest JVM sample per job. Every module pushes on its own 60 s cycle (claude-mcp-server: 30 s), so values between 0 and ~60 s are normal and change on every refresh \u2014 they show where each process is in its cycle, not a problem. Green: pushed within the last 90 s. Red: the module is down, or it is up and its OTLP endpoint is wrong \u2014 both look identical from here, and both mean its panels will be empty. Expect 8 modules (9 with claude-mcp-server running under Claude Desktop).",
+      "description": "time() minus the timestamp of the newest JVM sample per job. Every module pushes on its own 60 s cycle (claude-mcp-server: 30 s), so values between 0 and ~60 s are normal and change on every refresh \u2014 they show where each process is in its cycle, not a problem. Green: pushed within the last 90 s. Red: the module is down, or it is up and its OTLP endpoint is wrong \u2014 both look identical from here, and both mean its panels will be empty. Expect 8 modules (9 with claude-mcp-server running under Claude Desktop). TWO ENTRIES FOR ONE MODULE ARE POSSIBLE: Claude Desktop can start claude-mcp-server more than once (two PIDs, one service.name), and both processes then push under the same job \u2014 which doubles every counter on this dashboard without any error anywhere.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 6, "w": 12, "x": 0, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "s", "decimals": 0, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 90 }, { "color": "red", "value": 180 } ] } }, "overrides": [] },
@@ -84,7 +84,7 @@
     {
       "type": "stat",
       "title": "Modules that reported LLM metrics (range)",
-      "description": "Jobs for which gen_ai_client_token_usage_total has ANY sample inside the dashboard range. After a warm-up run of every agent this should read 7 (the two MCP servers have no model). This deliberately uses max_over_time, not increase(): Micrometer creates the counter on the first LLM call, so a module that made exactly one request since it started exports a flat, non-zero series \u2014 increase() over it is 0 and the module would wrongly be counted as silent (that is exactly what showed 2 instead of 7 on 2026-09-02). A module that is UP (previous panel) but missing HERE after a request has a working JVM export and a broken GenAI listener \u2014 the failure that once hid the LangChain4j leg.",
+      "description": "Jobs for which gen_ai_client_token_usage_total has ANY sample inside the dashboard range. After a warm-up run of every agent this should read 7 (the two MCP servers have no model). This is the ONE panel that deliberately breaks the range-correlation rule in the dashboard description, and it is a presence check rather than a count: max_over_time asks 'did this module report at all', which stays true even for a module that made exactly one request since it started \u2014 increase() over a lazily created counter is 0 and would report that module as silent (exactly what showed 2 instead of 7 on 2026-09-02). A module that is UP (previous panel) but missing HERE after a request has a working JVM export and a broken GenAI listener \u2014 the failure that once hid the LangChain4j leg.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 6, "w": 4, "x": 16, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 3 }, { "color": "green", "value": 7 } ] } }, "overrides": [] },
@@ -154,7 +154,7 @@
     {
       "type": "stat",
       "title": "Estimated cost (dashboard range)",
-      "description": "input tokens x $price_in + output tokens x $price_out, prices per 1M tokens from the dashboard variables at the top. The defaults are the ORDER OF MAGNITUDE for gpt-4o-mini \u2014 check the OpenRouter price page on the day and type the current numbers into the variables; nothing here is fetched. Four decimals because a single agent turn costs a fraction of a cent, and that IS the point of the panel.",
+      "description": "input tokens x $price_in + output tokens x $price_out, prices per 1M tokens from the dashboard variables at the top. The defaults are the ORDER OF MAGNITUDE for gpt-4o-mini \u2014 check the OpenRouter price page on the day and type the current numbers into the variables; nothing here is fetched. Four decimals because a single agent turn costs a fraction of a cent, and that IS the point of the panel. NOTE: this covers the CHAT leg only. multimodal-lab bills per picture, per character and per generated second, and two of its five capabilities never touch a ChatClient \u2014 see the mm_generation_* row.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
       "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4, "noValue": "$0", "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
@@ -171,10 +171,10 @@
     {
       "type": "bargauge",
       "title": "Estimated cost by module (dashboard range)",
-      "description": "Same formula as the stat, per job. This is the panel that answers 'which pattern is the expensive one' \u2014 orchestrator-workers on Spring AI runs a full model round per worker, chaining runs three, parallelization runs three at once; the bars make the difference visible without reading a trace. A module showing $0 after exactly one request since its restart is the first-sample blind spot, not a free call.",
+      "description": "Same formula as the stat, per job. This is the panel that answers 'which pattern is the expensive one' \u2014 orchestrator-workers on Spring AI runs a full model round per worker, chaining runs three, parallelization runs three at once; the bars make the difference visible without reading a trace. A module showing $0 after exactly one request since its restart is the first-sample blind spot, not a free call. min is pinned to 0 so the bars are proportional to the money, not to the spread between the cheapest and the most expensive module.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 16 },
-      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4, "noValue": "$0", "color": { "mode": "palette-classic-by-name" } }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4, "min": 0, "noValue": "$0", "color": { "mode": "palette-classic-by-name" } }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true },
       "targets": [
         {
@@ -331,17 +331,29 @@
     {
       "type": "timeseries",
       "title": "MCP payload per call (avg chars, request vs response)",
-      "description": "CHARACTERS, NOT TOKENS. An MCP server never sees token counts \u2014 no model, no tokenizer, and MCP reports no usage back \u2014 so the length of the strings exchanged is the only honest measure (roughly 3-4 chars per token for code, as an order of magnitude). Split by direction because the two are wildly asymmetric per tool: read_file sends a path and returns kilobytes, write_file sends the whole file and returns one line. Source: mcp_tool_payload_size_chars_{sum,count}.",
+      "description": "CHARACTERS, NOT TOKENS. An MCP server never sees token counts \u2014 no model, no tokenizer, and MCP reports no usage back \u2014 so the length of the strings exchanged is the only honest measure (roughly 3-4 chars per token for code, as an order of magnitude). Split by direction because the two are wildly asymmetric per tool: MEASURED 2026-09-27, read_file sends 48 chars and returns 24 700 \u2014 a factor of 500, and write_file is the exact mirror image (36 K in, 78 out). Measuring only the response would make write_file look free.\n\nCOLOUR ENCODES DIRECTION, NOT SERIES NAME \u2014 the one panel on this dashboard that breaks the palette-classic-by-name convention. With colour by name, 'write_file request' (36.5 K) and 'read_file response' (35.2 K) drew as two near-identical pink bars of near-identical height, which is the worst possible outcome for a panel whose entire point is that those two numbers belong to OPPOSITE directions. Orange is into the server, blue is out of it; tool names live in the legend table and the tooltip, where a name belongs.\n\nSource: mcp_tool_payload_size_chars_{sum,count}. Resources and prompts are deliberately NOT on this panel \u2014 they are picked by hand a few times an hour, so their rate() series sat at zero between the spikes and added six flat lines for nothing; they have their own two panels below.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 18, "x": 0, "y": 48 },
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "palette-classic-by-name" }, "custom": { "drawStyle": "bars", "fillOpacity": 40 } }, "overrides": [] },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "palette-classic-by-name" }, "custom": { "drawStyle": "bars", "fillOpacity": 40 } },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": ".*request$" },
+            "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-orange" } } ]
+          },
+          {
+            "matcher": { "id": "byRegexp", "options": ".*response$" },
+            "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-blue" } } ]
+          }
+        ]
+      },
       "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] } },
       "targets": [
         {
           "refId": "A",
           "expr": "sum by (job, tool, direction) (rate(mcp_tool_payload_size_chars_sum[$__rate_interval])) / sum by (job, tool, direction) (rate(mcp_tool_payload_size_chars_count[$__rate_interval]))",
           "interval": "1m",
-          "legendFormat": "{{job}} {{tool}} {{direction}}"
+          "legendFormat": "{{job}} - {{tool}} - {{direction}}"
         }
       ]
     },
@@ -363,13 +375,47 @@
         }
       ]
     },
-    { "type": "row", "title": "Traces \u2014 click a trace ID to open the waterfall", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 56 }, "collapsed": false },
+    {
+      "type": "bargauge",
+      "title": "MCP resources & prompts",
+      "description": "A DELIBERATELY UNUSUAL METRIC: it measures neither latency nor errors, because neither is interesting here \u2014 reading a resource is a file read and rendering a prompt is a string concatenation, both over in milliseconds. It answers the one question nothing else in the stack can: WAS THIS PICKED, AND HOW OFTEN? A prompt nobody chooses is a dead menu entry plus a maintenance obligation, and without this bar the only evidence would be asking people. Source: mcp_primitive_calls_total from McpPrimitiveTelemetry (claude-mcp-server), tagged primitive=resource|prompt|completion.\n\nmin IS PINNED TO 0. Without it Grafana scales bars to the data, so the smallest value renders as an empty bar and the largest as a full one \u2014 with counts of 1 and 2 that reads as 'never used' and 'used constantly', which is a lie about a one-call difference. Pinned to 0, a bar is proportional to the count.\n\nFOLLOWS THE TIME RANGE, like every other counter on this dashboard. An earlier version used max_over_time and reported the running total since the server started \u2014 which never changed when you moved the range picker, and a number that ignores the range is a number nobody can trust. The price of increase() is the blind spot in the dashboard description: the FIRST call of a freshly started server is invisible, because Micrometer creates the counter lazily and Prometheus never sees it at zero. Use a resource twice after a restart, or widen the range past the restart, and the count is exact.\n\nNOTE ON completion: the methods exist and register, but Claude Desktop never calls completion/complete \u2014 verified in the client protocol log, where the handshake asks only for tools/list, prompts/list and resources/list. A server can expose a capability no client asks for, which is the mirror image of mcp-server advertising resources and prompts while registering none.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 56 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "min": 0, "noValue": "nothing picked in range", "color": { "mode": "palette-classic-by-name" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (primitive, name) (increase(mcp_primitive_calls_total[$__range]))",
+          "legendFormat": "{{primitive}} {{name}}",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "MCP resources & prompts in time",
+      "description": "The companion of the bar gauge above: that one answers HOW MANY in the range, this one answers WHEN inside it. Together they are the whole story of a primitive nobody can otherwise observe \u2014 the client renders these in a menu and this server never learns what the human did next.\n\nStyled and queried exactly like 'MCP tool calls/min by server & tool' \u2014 same meter shape, same rate()x60 per minute, same line style \u2014 so the two read the same way and can sit in one row without a mental gear change. Colour stays by series name here, unlike the payload panel: these series have no two sides to distinguish, only six different things.\n\nWITH A HANDFUL OF PICKS PER HOUR THE VALUES ARE FRACTIONS: one call inside a one-minute rate window is 1/min, one call seen across a three-minute window is 0.33/min. That is the same arithmetic as the tool panel above, where a single read_file also shows as 0.3 \u2014 read the spikes as 'something happened here', not as a throughput.\n\nAN EMPTY PANEL IS USUALLY TRUE: it means nothing was picked in the selected range. Check the bar gauge above before assuming the metric is broken \u2014 if it is also empty at a wide range, the server has not served a resource or a prompt at all.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 62 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (primitive, name) (rate(mcp_primitive_calls_total[$__rate_interval])) * 60",
+          "interval": "1m",
+          "legendFormat": "{{primitive}} {{name}}"
+        }
+      ]
+    },
+    { "type": "row", "title": "Traces \u2014 click a trace ID to open the waterfall", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 68 }, "collapsed": false },
     {
       "type": "table",
       "title": "Latest agent requests (Tempo)",
-      "description": "TraceQL search on the span NAME, which Spring Boot 4 sets to 'http <method> <route>' for every server span. WHY A TABLE: Grafana's 'Traces' panel renders ONE trace (a waterfall for a trace-ID query) and answers a TraceQL search result \u2014 which is a list \u2014 with 'No data found in response'. A search result is a table; the Tempo datasource attaches a link to the trace ID column that opens the waterfall in Explore. If the list is empty right after a request, Tempo's ingester needs a few seconds (same lag as 'Logs for this span').",
+      "description": "TraceQL search on the span NAME, which Spring Boot 4 sets to 'http <method> <route>' for every server span. WHY A TABLE: Grafana's 'Traces' panel renders ONE trace (a waterfall for a trace-ID query) and answers a TraceQL search result \u2014 which is a list \u2014 with 'No data found in response'. A search result is a table; the Tempo datasource attaches a link to the trace ID column that opens the waterfall in Explore. If the list is empty right after a request, Tempo's ingester needs a few seconds (same lag as 'Logs for this span'). This query matches HTTP server spans only, so the STDIO server's mcp_tool / mcp_resource / mcp_prompt spans are not listed here \u2014 find them in Explore with {resource.service.name=\"claude-mcp-server\"}.",
       "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 57 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 69 },
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
         "overrides": [
@@ -388,13 +434,13 @@
         }
       ]
     },
-    { "type": "row", "title": "Reliability \u2014 HTTP", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 67 }, "collapsed": false },
+    { "type": "row", "title": "Reliability \u2014 HTTP", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 79 }, "collapsed": false },
     {
       "type": "timeseries",
       "title": "Requests/min by service & endpoint",
       "description": "Actuator endpoints are excluded at the source by the shared ObservationPredicate (module: common). /approvals polling from the chat-ui is NOT excluded \u2014 that flat line on the patterns modules is the UI asking for pending approvals.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 68 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 80 },
       "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         {
@@ -410,7 +456,7 @@
       "title": "HTTP 4xx/5xx per min",
       "description": "Flat zero = zero errors (the query filters status 4xx/5xx). A 500 on /api/v1/patterns/parallel from 2026-09-02 was the Jackson 3 FAIL_ON_NULL_FOR_PRIMITIVES change \u2014 fixed in ParallelizationPattern.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 68 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 80 },
       "fieldConfig": { "defaults": { "unit": "short", "noValue": "0", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         {
@@ -421,13 +467,13 @@
         }
       ]
     },
-    { "type": "row", "title": "JVM", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 76 }, "collapsed": false },
+    { "type": "row", "title": "JVM", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 88 }, "collapsed": false },
     {
       "type": "timeseries",
       "title": "Heap used by service",
       "description": "Gauges \u2014 no rate(), so these render at any range. That asymmetry is the tell when the panels above go blank: gauges fine + rate panels empty = window narrower than the push interval, not missing metrics.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 77 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 89 },
       "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         {
@@ -442,7 +488,7 @@
       "title": "Live threads by service",
       "description": "Watch mcp-server during a pending approval \u2014 virtual threads keep this flat while a request blocks.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 77 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 89 },
       "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic-by-name" }, "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         {
