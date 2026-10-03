@@ -48,7 +48,8 @@ public class AiServicesAgentService {
 
         this.assistant = AiServices.builder(Assistant.class)
                 .chatModel(model)
-                .toolProvider(toolProvider)
+                .toolProvider(toolProvider) // .tools(new DemoTools()) is simpler, but invisible in traces
+                .maxToolCallingRoundTrips(10) // by default 100 https://docs.langchain4j.dev/apidocs/dev/langchain4j/service/AiServices.html#maxToolCallingRoundTrips(int)
                 .chatMemoryProvider(memoryId ->
                         MessageWindowChatMemory.withMaxMessages(20))
                 .build();
