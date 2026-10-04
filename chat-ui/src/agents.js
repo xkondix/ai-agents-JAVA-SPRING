@@ -5,12 +5,17 @@
  *
  * ── ONE ENTRY PER RUNNING PROCESS ──────────────────────────────────────────
  *
- * langchain4j-agent-local (8082) exposes TWO endpoints that are the whole
- * point of that module: the same agent with the loop written by hand, and
- * with the loop hidden inside AiServices. For a while it had two entries
- * here, which was wrong in a way worth recording: they shared a port, a
- * process and a health endpoint, so a stopped module painted TWO red tiles
- * and looked like two failures.
+ * Two modules expose more than one chat endpoint, and in both cases the extra
+ * endpoints ARE the point of the module:
+ *
+ *   langchain4j-agent-local (8082) — the same agent with the loop written by
+ *     hand, and with the loop hidden inside AiServices
+ *   spring-ai-agent-local (8084) — the same call through three different
+ *     advisor chains
+ *
+ * For a while LangChain4j had two entries here, which was wrong in a way
+ * worth recording: they shared a port, a process and a health endpoint, so a
+ * stopped module painted TWO red tiles and looked like two failures.
  *
  * A tile is a process. Endpoints inside one process are `variants` — the
  * selector renders them as a row inside the tile, and useAgentHealth still
@@ -33,7 +38,7 @@ export const AGENTS = [
   {
     id:          'raw-agent',
     name:        'No Framework Agent',
-    description: 'Pure loop — no LangChain4j, no Spring AI, just HTTP',
+    description: 'Pure loop, no LangChain4j, no Spring AI, just HTTP',
     color:       '#EF4444',
     colorClass:  'bg-red-500',
     borderClass: 'border-red-500',
@@ -101,6 +106,34 @@ export const AGENTS = [
     healthPath:  '/api/spring-agent-local/actuator/health',
     chatField:   'message',
     icon:        'SAI',
+    // Same model, same tools, same question. Only the advisor chain changes,
+    // so anything that differs in the logs, the trace or the stored
+    // conversation has exactly one cause.
+    //
+    // ToolCallingAdvisor is auto-registered in all three; what moves is who
+    // sits inside the loop with it. Order decides that, and the numbers are
+    // counter-intuitive: HIGHEST_PRECEDENCE is Integer.MIN_VALUE, so a plain
+    // 0 is LARGER than the tool advisor's MIN_VALUE+300 and therefore inside.
+    variants: [
+      {
+        id:       'minimal',
+        label:    'Default',
+        hint:     'Memory outside the loop, stores the final answer only',
+        chatPath: '/api/spring-agent-local/api/v1/agent/chat',
+      },
+      {
+        id:       'advisors',
+        label:    'Custom advisor',
+        hint:     'InspectionAdvisor runs once per iteration, inside the loop',
+        chatPath: '/api/spring-agent-local/api/v1/agent/chat/advisors',
+      },
+      {
+        id:       'memory-in-loop',
+        label:    'Memory in loop',
+        hint:     'Memory raised above the tool advisor, stores every tool call',
+        chatPath: '/api/spring-agent-local/api/v1/agent/chat/memory-in-loop',
+      },
+    ],
   },
   {
     id:          'spring-agent-mcp',

@@ -56,7 +56,15 @@ management:
 logging:
   level:
     com.xkondix: DEBUG
-    org.springframework.ai: INFO
+    org:
+      springframework:
+        ai:
+          info: INFO
+          chat:
+            client:
+              advisor:
+                SimpleLoggerAdvisor: DEBUG
+
 
 ---
 # ── Profile: local — Ollama on this machine ───────────────────────────────
