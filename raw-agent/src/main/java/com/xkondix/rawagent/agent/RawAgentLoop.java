@@ -30,12 +30,13 @@ import java.util.List;
  * instead of propagating a stack trace to the user.
  *
  * SPANS BY HAND — the tracing counterpart of the manual metrics in
- * LlmClient. Spring AI gives you "tool_call xyz" spans for free; here we
- * create them ourselves with the low-level Tracer API, so a raw-agent
- * trace in Tempo looks structurally identical to a Spring AI one:
+ * LlmClient. Spring AI gives you "execute_tool xyz" spans for free (named
+ * "tool_call xyz" before Spring AI 2.0); here we create them ourselves with
+ * the low-level Tracer API, so a raw-agent trace in Tempo looks structurally
+ * identical to a Spring AI one:
  *   http post /api/v1/agent/chat
- *   ├── chat <model>          (created in LlmClient)
- *   ├── tool_call <name>      (created here)
+ *   ├── chat <model>            (created in LlmClient)
+ *   ├── execute_tool <name>     (created here)
  *   └── chat <model>
  * Tracer.nextSpan() automatically parents the new span to the current
  * one (the HTTP server span), and withSpan(...) scopes it on this thread
@@ -117,8 +118,10 @@ public class RawAgentLoop {
     }
 
     /**
-     * Executes a single tool wrapped in a "tool_call <name>" span —
-     * the manual equivalent of what Spring AI emits automatically.
+     * Executes a single tool wrapped in an "execute_tool <name>" span —
+     * the manual equivalent of what Spring AI emits automatically, with the
+     * same span name and gen_ai.operation.name value (GenAI semantic
+     * conventions).
      * Tool errors are returned as text into the history (never thrown),
      * so the span is marked failed only on unexpected exceptions.
      */
@@ -126,7 +129,8 @@ public class RawAgentLoop {
         String toolName = toolCall.function().name();
         String toolArgs = toolCall.function().arguments();
 
-        Span span = tracer.nextSpan().name("tool_call " + toolName);
+        Span span = tracer.nextSpan().name("execute_tool " + toolName);
+        span.tag("gen_ai.operation.name", "execute_tool");
         span.tag("gen_ai.tool.name", toolName);
         span.tag("agent.loop.iteration", String.valueOf(iteration));
         span.tag("framework", "raw");

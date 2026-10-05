@@ -47,9 +47,9 @@ import java.util.UUID;
  *
  * Observability: McpToolProvider is wrapped in TracingToolProvider (module
  * `common`, shared with patterns-langchain4j), so every tool execution shows
- * up as a "tool_call <n>" span in Tempo — the LC4j trace has the same
+ * up as an "execute_tool <name>" span in Tempo — the LC4j trace has the same
  * shape as Spring AI and raw-agent traces
- * (http post → chat → tool_call → chat).
+ * (http post → chat → execute_tool → chat).
  *
  * ── NO TRACE PROPAGATION HERE, ON PURPOSE ──────────────────────────────────
  *

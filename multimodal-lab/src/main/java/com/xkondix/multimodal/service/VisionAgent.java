@@ -30,7 +30,7 @@ import java.nio.file.Path;
  *   - You cannot give the vision leg its own instructions without polluting
  *     the router's system prompt with rules that apply to one modality.
  *
- * Delegating instead gives a nested span (chat → tool_call analyze_image →
+ * Delegating instead gives a nested span (chat → execute_tool analyze_image →
  * chat), a separate model per capability, and a prompt that only talks about
  * looking at pictures.
  *

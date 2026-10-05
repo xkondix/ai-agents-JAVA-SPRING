@@ -3,7 +3,7 @@
 Quick reference for every HTTP endpoint, MCP tool, and observability signal
 in the project. Companion to `README.md`, `PATTERNS.md` and `OBSERVABILITY.md`.
 
-Stack: Java 21 · Spring Boot 4.0.4 · Spring Framework 7.0.6 · Spring AI 2.0.0 ·
+Stack: Java 21 · Spring Boot 4.0.4 · Spring Framework 7.0.6 · Spring AI 2.0.1 ·
 LangChain4j 1.16.3 (`-spring-boot4-` starters) · Jackson 3 · springdoc 3.0.3 ·
 MCP over Streamable HTTP · Grafana LGTM 0.32.0.
 
@@ -28,10 +28,13 @@ MCP over Streamable HTTP · Grafana LGTM 0.32.0.
 | POST | `/api/v1/mcp/chat` | Orchestrator delegating to mcp-server (8081) over Streamable HTTP. Memory keyed by `conversationId` / `userId` from the request; none = one-off conversation |
 
 ### spring-ai-agent-local (port 8084)
+Same question, same model, same tools — only the advisor chain changes.
+
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/v1/agent/chat` | Chat via ChatClient + local @Tool |
-| POST | `/api/v1/agent/chat/approval` | Chat variant demonstrating the Approval Flow |
+| POST | `/api/v1/agent/chat` | Minimal chain: memory (outside the loop) + the auto-registered `ToolCallingAdvisor` |
+| POST | `/api/v1/agent/chat/advisors` | Longer chain: `InspectionAdvisor` (order 0 → runs INSIDE the loop, once per iteration) + `SimpleLoggerAdvisor` + memory |
+| POST | `/api/v1/agent/chat/memory-in-loop` | Memory moved inside the loop by raising its order to `HIGHEST_PRECEDENCE + 400` — the store keeps the full tool transcript |
 
 ### spring-ai-agent-mcp (port 8085)
 | Method | Path | Description |
@@ -154,8 +157,8 @@ of the module.
 
 | Tool | Model | Protocol | Cost |
 |------|-------|----------|------|
-| `analyze_image` | `gpt-4o` (own setting) | `/chat/completions` via Spring AI | cents |
-| `generate_image` | `gpt-image-1` | `/images/generations` via Spring AI | cents |
+| `analyze_image` | own setting `OPENROUTER_VISION_MODEL` (yml default currently `gpt-4o-mini`) | `/chat/completions` via Spring AI | cents |
+| `generate_image` | `google/gemini-3-pro-image` (`OPENROUTER_IMAGE_MODEL`) | `/images/generations` via Spring AI | cents |
 | `speak_text` | `x-ai/grok-voice-tts-1.0` | `/audio/speech` via Spring AI | per character |
 | `generate_music` | Lyria 3 pro / clip | streaming `/chat/completions`, **raw HTTP** | $0.08 / $0.04 flat |
 | `generate_video` | `google/veo-3.1` | job queue `/videos`, **raw HTTP** | ~$1.60 per 4 s |
@@ -168,7 +171,11 @@ and then fails.
 All five check a shared **retry budget** (`MediaCollector`, 2 failures per
 request) before doing any work. `ToolCallingAdvisor` has no failure semantics —
 a tool answering `ERROR:` has, as far as the loop is concerned, answered — and
-one request once produced over a hundred calls to a single failing tool.
+on Spring AI 2.0.0 one request once produced over a hundred calls to a single
+failing tool. Since **2.0.1** the framework caps a turn at 40 calls per tool
+and 150 in total (`spring.ai.tools.limits.*`), but that limit counts calls,
+not failures: 40 failing calls to a paid generator are still 40 billable
+requests, so the budget stays.
 
 ---
 
@@ -204,13 +211,20 @@ look empty at short ranges.
 ### Three instrumentation approaches, one dashboard
 | Module | Spans | Metrics |
 |--------|-------|---------|
-| raw-agent | hand-written (`Tracer` API: `chat <model>`, `tool_call <n>` + `agent.loop.iteration`) | hand-written in `LlmClient`, pre-registered at 0 on startup |
-| langchain4j-* | `GenAiMetricsChatModelListener` (chat spans, optional `gen_ai.prompt`/`gen_ai.completion`) + `TracingToolProvider` (tool spans) | same listener, `framework=langchain4j`, pre-registered at 0 on startup |
+| raw-agent | hand-written (`Tracer` API: `chat <model>`, `execute_tool <n>` + `agent.loop.iteration`) | hand-written in `LlmClient`, pre-registered at 0 on startup |
+| langchain4j-* | `GenAiMetricsChatModelListener` (chat spans, optional `gen_ai.prompt`/`gen_ai.completion`) + `TracingToolProvider` (`execute_tool <n>` spans) | same listener, `framework=langchain4j`, pre-registered at 0 on startup |
 | spring-ai-* | automatic — `chat_client → tool_calling → advisors → chat → POST` plus `execute_tool <n>` (`spring.ai.tool.*` attributes) | automatic (`gen_ai.*`, `spring_ai_tool_*`) |
 | patterns-spring-ai | + hand-written `evaluator_iteration N` spans carrying `evaluator.score` | — |
 | mcp-server | `mcp_tool <n>` (SERVER kind, `McpToolTelemetry`) | `mcp_tool_calls_total`, `mcp_tool_duration_milliseconds_*`, `mcp_tool_payload_size_chars_*` |
 | claude-mcp-server | same, own copy in `CodeToolsService` | same names, `framework=spring-ai` |
 | multimodal-lab | automatic for the three Spring AI tools; **none** for music and video | `mm_generation_*` for all five — the only accounting for the two that bypass ChatClient |
+
+**One tool-span name across all three frameworks.** Spring AI 2.0 renamed its
+tool span from `tool_call <name>` to `execute_tool <name>` and set
+`gen_ai.operation.name=execute_tool` (GenAI semantic conventions). The
+hand-written spans in raw-agent and `TracingToolProvider` used to copy the old
+1.x name; they now use `execute_tool` with the same `gen_ai.operation.name`
+tag, so one TraceQL query finds tool executions from every module.
 
 **Spring AI observations exist only with the auto-configured `ChatClient.Builder`.**
 `ChatClient.builder(chatModel)` hard-codes `ObservationRegistry.NOOP` and
@@ -244,6 +258,12 @@ and music and video do not go through `ChatClient` at all, so they produce no
 `gen_ai` span and no token counters. The modality that costs the most is the
 one standard instrumentation never sees.
 
+**Token usage on the `ChatResponse` changed in 2.0.1.** `ToolCallingAdvisor`
+now sums usage over every model call in the loop; on 2.0.0 the final response
+carried only the last call's usage. The `gen_ai_client_token_usage` metric is
+unaffected (it is recorded per model call), but anything reading usage from
+the response — tests included — sees higher, cumulative numbers.
+
 ### Tracing notes
 - GenAI Semantic Conventions on each LLM span: `gen_ai.request.model`,
   `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`,
@@ -261,7 +281,7 @@ one standard instrumentation never sees.
   `McpTransportContext` and injected from there.
 - **Known gap, kept on purpose**: `langchain4j-agent-mcp` does **not** propagate
   trace context, so its mcp-server spans form separate traces — correlate by
-  time. The A2A-vs-MCP contrast for Part 2.
+  time. The A2A-vs-MCP contrast for Part III (MCP as a Process Boundary).
 
 ### Dashboards
 Provisioned from `grafana/provisioning/dashboards/` (reloaded every 30 s) and
@@ -335,7 +355,7 @@ Three containers, all of them used. `docker compose up -d` starts everything.
 - `languages/` — `TranslationLanguages` (chaining target languages + `Mixed`)
 
 Per-module dependencies (managed by parent BOMs — Spring Boot 4.0.4,
-LangChain4j 1.16.3, Spring AI 2.0.0, Java 21):
+LangChain4j 1.16.3, Spring AI 2.0.1, Java 21):
 
 | Module | Key dependencies |
 |--------|------------------|

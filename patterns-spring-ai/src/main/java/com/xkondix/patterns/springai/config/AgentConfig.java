@@ -30,9 +30,11 @@ import org.springframework.context.annotation.Configuration;
  * with the real registry.
  *
  * The symptom on stage: LangChain4j and raw-agent traces show
- * chat → tool_call → chat, the Spring AI trace shows chat → chat with the tool
- * visible only in a log line, and the "Tool executions (Spring AI)" panel
- * stays at No data. It looked like a Spring AI 2.0 gap; it was this call.
+ * chat → execute_tool → chat, the Spring AI trace showed chat → chat with the
+ * tool visible only in a log line, and the "Tool executions (Spring AI)" panel
+ * stayed at No data. It looked like a Spring AI 2.0 gap; it was this call.
+ * With the injected builder Spring AI emits its own "execute_tool <name>"
+ * span, the same name the other two now use.
  *
  * The auto-configured ChatClient.Builder (ChatClientAutoConfiguration) carries
  * the ObservationRegistry, the observation conventions and every

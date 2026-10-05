@@ -26,9 +26,11 @@ import java.util.List;
  * Observability: the model call is covered by the shared
  * GenAiMetricsChatModelListener (chat span + GenAI metrics), but tool
  * execution here bypasses AiServices entirely — it is our own code, so the
- * "tool_call <name>" spans are created by hand, exactly like in the
+ * "execute_tool <name>" spans are created by hand, exactly like in the
  * framework-free raw-agent module. Same pattern, same tags
- * (gen_ai.tool.name, agent.loop.iteration), span.end() in finally.
+ * (gen_ai.operation.name, gen_ai.tool.name, agent.loop.iteration),
+ * span.end() in finally. The span name follows Spring AI 2.0, which renamed
+ * its own tool span from "tool_call" to "execute_tool".
  */
 @Slf4j
 @Service
@@ -79,14 +81,15 @@ public class RawAgentLoopService {
     }
 
     /**
-     * Executes one tool inside a "tool_call &lt;name&gt;" span.
+     * Executes one tool inside an "execute_tool &lt;name&gt;" span.
      * Tool failures are returned to the model as text (never thrown), so the
      * loop keeps going; the span is still marked with the error.
      */
     private String executeToolWithSpan(String toolName, String arguments, int iteration) {
         log.info("[RAW LOOP] Tool: {} args={}", toolName, arguments);
 
-        Span span = tracer.nextSpan().name("tool_call " + toolName);
+        Span span = tracer.nextSpan().name("execute_tool " + toolName);
+        span.tag("gen_ai.operation.name", "execute_tool");
         span.tag("gen_ai.tool.name", toolName);
         span.tag("agent.loop.iteration", String.valueOf(iteration));
         span.tag("framework", "langchain4j");

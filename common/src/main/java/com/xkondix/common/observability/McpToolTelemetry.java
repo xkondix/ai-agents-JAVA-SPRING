@@ -12,7 +12,9 @@ import java.util.function.Supplier;
 
 /**
  * One span and three meters around a single MCP tool invocation — the
- * SERVER-side counterpart of the "tool_call" spans the agents emit.
+ * SERVER-side counterpart of the "execute_tool" spans the agents emit
+ * (all three agent frameworks use that name since Spring AI 2.0 renamed
+ * its own tool span from "tool_call").
  *
  * WHY THIS EXISTS. Spring AI 2.0 instruments tool calling on the AGENT side
  * (spring.ai.tool observations, see the Observability reference) but the

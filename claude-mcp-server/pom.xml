@@ -40,7 +40,7 @@
 
     <properties>
         <java.version>21</java.version>
-        <spring-ai.version>2.0.0</spring-ai.version>
+        <spring-ai.version>2.0.1</spring-ai.version>
         <!-- Boot manages io.opentelemetry:opentelemetry-bom (1.55.0) but NOT the
              io.opentelemetry.instrumentation group, so the Logback appender needs
              an explicit version. Instrumentation 2.21.0 is the release that

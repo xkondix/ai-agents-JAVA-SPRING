@@ -32,7 +32,7 @@ import org.springframework.ai.chat.client.advisor.api.BaseAdvisor;
  *
  * So the agent loop is literally a link in the list this class belongs to.
  * That is the structural difference from LangChain4j: AiServices hides the
- * loop behind a proxy you cannot reach, while Spring AI hides it in a
+ * loop behind a proxy you cannot change, while Spring AI hides it in a
  * structure you can add to.
  *
  * ── ORDER 0 PUTS THIS ADVISOR *INSIDE* THE LOOP ────────────────────────────
@@ -54,9 +54,15 @@ import org.springframework.ai.chat.client.advisor.api.BaseAdvisor;
  * answered. An earlier version of this comment claimed order 0 made it run
  * first; that was simply wrong.
  *
- * That turns out to be the useful position. An advisor inside the loop is the
- * only way to observe individual iterations from application code — which is
- * exactly the seam LangChain4j's AiServices does not offer.
+ * That turns out to be the useful position: inside the loop an advisor sees
+ * every iteration AND can change it. LangChain4j can OBSERVE iterations too —
+ * AiServices.registerListener(...) with an AiServiceRequestIssuedEvent
+ * listener (fires once per model call, i.e. once per lap) and a
+ * ToolExecutedEvent listener (once per tool execution), both @Experimental
+ * in 1.x — but those listeners only watch; they cannot rewrite the request.
+ * The real difference is observe vs modify, not visible vs invisible. (An
+ * earlier version of this comment claimed LangChain4j had no per-iteration
+ * seam at all; that was wrong as well.)
  *
  * To see only the original request instead, give it an order BELOW
  * ToolCallingAdvisor's (for example HIGHEST_PRECEDENCE + 100). Then it runs
