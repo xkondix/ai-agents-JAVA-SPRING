@@ -13,7 +13,7 @@ and metrics from this module appear under the new service name, not the old one.
 | | this module | rest of the project |
 |---|---|---|
 | Spring Boot | 4.0.4 | 4.0.4 |
-| Spring AI | 2.0.0 | 2.0.0 |
+| Spring AI | 2.0.1 | 2.0.1 |
 | Parent POM | `spring-boot-starter-parent` | project parent |
 | Reactor | **excluded** | included |
 
@@ -30,7 +30,9 @@ entry commented out:
 
 A root `mvn clean install` therefore does **not** rebuild this module. That is
 the single most common reason for "I changed the code and nothing happened" —
-see Building below.
+see Building below. The same applies to version bumps: after moving the
+project to Spring AI 2.0.1 this module has to be rebuilt on its own, and
+Claude Desktop restarted, before the running server is actually on 2.0.1.
 
 `spring-boot-starter-parent` is not cosmetic here: it sets `-parameters`.
 Without that flag the generated JSON schema publishes arguments as `arg0`/`arg1`
@@ -101,7 +103,8 @@ Then restart Claude Desktop. Notes:
 
 ## Transport: STDIO only
 
-Verified against `McpServerProperties` in Spring AI 2.0.0:
+Verified against `McpServerProperties` in Spring AI 2.0.0 (not re-checked
+after the bump to 2.0.1):
 
 ```java
 private boolean stdio = false;                              // default OFF
@@ -148,6 +151,13 @@ Failures are returned to the model as `ERROR: ...` text rather than thrown. A
 readable message is more useful to a model than a protocol-level error it cannot
 inspect — but it means error rate has to be derived from the result text, not
 from exception counts (see the metrics section).
+
+> **Spring AI 2.0.1 made this rule stricter.** `@McpTool` exception handling now
+> mirrors `@Tool`: a `RuntimeException` still becomes an error result the model
+> can read, but a declared **checked** exception (e.g. `IOException`) or an
+> `Error` thrown out of an `@McpTool` method is now a hard failure that never
+> reaches the model. Keep catching `IOException` inside the tool, as
+> `CodeToolsService` does via `traced(...)`.
 
 ## Tests
 

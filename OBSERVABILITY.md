@@ -41,10 +41,17 @@ correct query that returns nothing.
 | | raw-agent | LangChain4j modules | Spring AI modules |
 |---|---|---|---|
 | chat span | `Tracer.nextSpan()` by hand in `LlmClient` | `GenAiMetricsChatModelListener` (`common`) | automatic |
-| tool span | by hand in `RawAgentLoop` | `TracingToolProvider` (`common`) | automatic, `execute_tool <n>` |
+| tool span | by hand in `RawAgentLoop`, `execute_tool <n>` | `TracingToolProvider` (`common`), `execute_tool <n>` | automatic, `execute_tool <n>` |
 | metrics | by hand in `LlmClient` | same listener | automatic (`ObservationHandler`) |
 | content | — (console only) | on the span: `xkondix.observability.genai.include-prompt/completion` | in logs: `spring.ai.chat.observations.log-prompt/completion` |
 | depth of a trace | 2 levels | 3 levels | 7 levels (`chat_client → tool_calling → advisor → call → chat → POST`) |
+
+Tool spans carry **one name in all three columns**. Spring AI 2.0 renamed its
+own tool span from `tool_call <name>` to `execute_tool <name>` and set
+`gen_ai.operation.name=execute_tool` (GenAI semantic conventions). The
+hand-written spans used to copy the old 1.x name; they now use `execute_tool`
+and the same `gen_ai.operation.name` tag, so a single TraceQL query finds every
+tool execution regardless of framework.
 
 Meter names are identical on purpose so the three land on the same panels:
 `gen.ai.client.token.usage` (counter), `gen.ai.client.operation` (timer),
@@ -112,10 +119,10 @@ thesis of the project.
 | 12 | Jackson 3 `FAIL_ON_NULL_FOR_PRIMITIVES` default | 500 on `/patterns/parallel`, LC4j twin fine | `Double` + normalisation in `ParallelizationPattern` |
 | 13 | `allow-bean-definition-overriding: true` | our tool bean replaced, model got zero tools | flag removed |
 | 14 | MCP transport mismatch | agent fails to start (loud, but reads like a network error) | `McpClientConfig` comments |
-| 15 | **`ToolCallingAdvisor` has no failure semantics** — a tool answering `ERROR:` has, as far as the loop is concerned, answered | one request produced **over a hundred** calls to the same failing tool; free that time, billable the next | retry budget in `MediaCollector`, checked by all five tools before doing work |
+| 15 | **`ToolCallingAdvisor` has no failure semantics** — a tool answering `ERROR:` has, as far as the loop is concerned, answered | on Spring AI 2.0.0 one request produced **over a hundred** calls to the same failing tool; free that time, billable the next | retry budget in `MediaCollector`, checked by all five tools before doing work. Since **2.0.1** the framework also caps a turn at 40 calls per tool / 150 total — but it counts calls, not failures, so the budget stays |
 | 16 | **A modality you did not request is not an error.** A chat completion returns audio only with `modalities: ["text","audio"]`; without it Lyria composes, bills, and returns the lyrics of a song nobody can hear | HTTP 200, valid completion, missing exactly the part you wanted | `LyriaClient` sends both `modalities` and `stream` |
 | 17 | **The provider's docs described a catalogue that does not exist** (loud, but doc-induced): `openai/gpt-4o-mini-tts-2025-12-15` is used in every OpenRouter TTS sample *and* in its "Model not found?" section — and the live catalogue serves 18 speech models, none from OpenAI | `400: Model does not exist`, twice, once from a verbatim copy of the docs | the catalogue endpoint is the source of truth; noted in `multimodal-lab` yml |
-| 18 | **Four correct designs composing into something that cannot work** — OpenRouter returns chat audio only when streaming; Spring AI maps audio into `Media` only in the NON-streaming path (`OpenAiChatModel:385`) | the stream arrives, the lyrics arrive, `media blocks=0`; no layer is wrong, so no layer can warn | music dropped to raw HTTP (`LyriaClient`) |
+| 18 | **Four correct designs composing into something that cannot work** — OpenRouter returns chat audio only when streaming; Spring AI maps audio into `Media` only in the NON-streaming path (`OpenAiChatModel:385` in 2.0.0 — re-check the line on 2.0.1) | the stream arrives, the lyrics arrive, `media blocks=0`; no layer is wrong, so no layer can warn | music dropped to raw HTTP (`LyriaClient`) |
 | 19 | **A failed fetch rendered as a normal empty state** (ours) — the gallery caught every error and showed "Nothing in ./media yet" | nineteen files on disk, the panel calmly reporting an empty directory | `ArtifactGallery` distinguishes empty from unavailable |
 | 20 | `localhost` resolves to `::1` first; Docker Desktop publishes on IPv4 only | a healthy Redis container answering "Unable to connect to Redis" | `127.0.0.1` in `multimodal-lab` yml; the same order is visible in the OTLP exporter's own error |
 

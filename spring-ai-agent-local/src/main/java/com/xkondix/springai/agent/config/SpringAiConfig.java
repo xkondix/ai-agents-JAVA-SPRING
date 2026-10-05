@@ -19,9 +19,17 @@ import org.springframework.context.annotation.Configuration;
  * ChatClient-level observation — including the spring.ai.tool span around
  * each tool execution. That is why Spring AI traces showed chat → chat with
  * getWeather present only as a log line, while LangChain4j and raw-agent
- * showed chat → tool_call → chat. The auto-configured ChatClient.Builder
- * (prototype bean) carries the real registry. Full note in
+ * showed chat → execute_tool → chat. The auto-configured ChatClient.Builder
+ * (prototype bean) carries the real registry, and Spring AI then emits its
+ * own "execute_tool <name>" span. Full note in
  * patterns-spring-ai/config/AgentConfig.
+ *
+ * THE DEFAULT MEMORY ADVISOR BELOW IS A DELIBERATE DUPLICATE. Every method in
+ * SpringAiAgentService adds its own MessageChatMemoryAdvisor per request, so
+ * each call runs with two memory advisors on the same conversation id — the
+ * setup the documentation advises against, kept to show its effect (two
+ * message_chat_memory spans; the question twice in the memory-in-loop
+ * prompt). Delete defaultAdvisors(...) to get the documented behaviour.
  */
 @Configuration
 public class SpringAiConfig {

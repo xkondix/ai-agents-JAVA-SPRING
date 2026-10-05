@@ -40,8 +40,8 @@ import java.util.function.Predicate;
  * TOOLS SURVIVE THE MOVE. AgentBuilder exposes toolProvider(), so the
  * specialists keep taking their tools from the instrumented ToolProvider
  * (ToolsConfig) rather than AiServices.tools(...). Every execution — the
- * approval-gated getSecretRumors included — still appears as a
- * "tool_call <name>" span. Losing that would have been a reason not to do
+ * approval-gated getSecretRumors included — still appears as an
+ * "execute_tool <name>" span. Losing that would have been a reason not to do
  * this rewrite at all.
  *
  * LESSON LEARNED — the agent interfaces MUST be public:

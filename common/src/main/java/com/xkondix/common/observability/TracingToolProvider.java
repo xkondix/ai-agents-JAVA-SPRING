@@ -14,7 +14,14 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 
 /**
- * Adds "tool_call &lt;name&gt;" spans to every tool served by a ToolProvider.
+ * Adds "execute_tool &lt;name&gt;" spans to every tool served by a ToolProvider.
+ *
+ * SPAN NAME: execute_tool, not tool_call. Spring AI 2.0 renamed its own tool
+ * span from "tool_call &lt;name&gt;" to "execute_tool &lt;name&gt;" and set
+ * gen_ai.operation.name=execute_tool (OpenTelemetry GenAI semantic
+ * conventions). This class used to copy the old 1.x name; it now matches the
+ * current one, so a TraceQL query for execute_tool finds tool executions from
+ * all three frameworks.
  *
  * WHY THIS EXISTS
  * LangChain4j creates no tool spans of its own, and the metrics listener
@@ -83,7 +90,8 @@ public class TracingToolProvider implements ToolProvider {
 
     private ToolExecutor wrap(String toolName, ToolExecutor executor) {
         return (toolRequest, memoryId) -> {
-            Span span = tracer.nextSpan().name("tool_call " + toolName);
+            Span span = tracer.nextSpan().name("execute_tool " + toolName);
+            span.tag("gen_ai.operation.name", "execute_tool");
             span.tag("gen_ai.tool.name", toolName);
             span.tag("framework", "langchain4j");
 

@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
  * ChatClient.builder(chatModel): the static factory uses ObservationRegistry.NOOP
  * and drops every ChatClient-level observation, including the spring.ai.tool
  * span around each MCP tool execution. With the injected builder the trace
- * reads chat → tool_call (agent side) → http post /mcp → mcp_tool (server
+ * reads chat → execute_tool (agent side) → http post /mcp → mcp_tool (server
  * side) → chat, i.e. the same shape as LangChain4j and raw-agent, plus the
  * server half that propagation adds. Full note in
  * patterns-spring-ai/config/AgentConfig.

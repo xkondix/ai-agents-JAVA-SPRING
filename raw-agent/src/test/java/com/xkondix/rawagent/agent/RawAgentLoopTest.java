@@ -30,7 +30,7 @@ import static org.mockito.Mockito.when;
  * LlmClient. Frameworks hide the loop, which also makes it harder to
  * test at this level of precision.
  *
- * Tracing note: the loop creates manual "tool_call" spans, so it needs a
+ * Tracing note: the loop creates manual "execute_tool" spans, so it needs a
  * Tracer. Tests use Tracer.NOOP — spans become no-ops, behavior stays
  * identical, nothing to mock.
  */

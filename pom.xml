@@ -9,7 +9,8 @@
     <!--  PARENT POM — ai-agents-JAVA-SPRING                              -->
     <!--  Konrad Kowalczyk  |  xkondix                                    -->
     <!--                                                                  -->
-    <!--  MIGRATION: Spring Boot 3.5.0 -> 4.0.4, Spring AI 1.1.4 -> 2.0.0 -->
+    <!--  MIGRATION: Spring Boot 3.5.0 -> 4.0.4,                          -->
+    <!--             Spring AI 1.1.4 -> 2.0.0 -> 2.0.1                    -->
     <!--  claude-mcp-server was the pilot (standalone, outside the         -->
     <!--  reactor); the same version set is confirmed working there.       -->
     <!-- ================================================================ -->
@@ -73,7 +74,7 @@
         <langchain4j.version>1.16.3</langchain4j.version>
 
         <!--
-            Spring AI 2.0.0 (was 1.1.4).
+            Spring AI 2.0.1 (was 2.0.0, and 1.1.4 before the Boot 4 migration).
             Requires Spring Boot 4 + Spring Framework 7. Jackson 3 is the
             default in Boot 4, but Jackson 2 remains MANAGED (see below), so
             it is not a hard blocker.
@@ -87,8 +88,24 @@
             org.springframework.ai.openai.audio.speech.* is now
             org.springframework.ai.audio.tts.*, SpeechModel is
             TextToSpeechModel, and `speed` went from Float to Double.
+            The tool span was renamed from "tool_call <name>" to
+            "execute_tool <name>" (gen_ai.operation.name=execute_tool); the
+            hand-written spans in raw-agent and common/TracingToolProvider
+            follow the same name.
+
+            Behaviour changes in 2.0.1 that this project can see
+            (docs.spring.io/spring-ai/reference/upgrade-notes.html):
+              - tool call limits: 40 calls per tool, 150 in total, per turn
+                (2.0.0 had no limit at all); spring.ai.tools.limits.*
+              - ToolCallingAdvisor reports token usage summed over the whole
+                loop, not only the last model call
+              - OpenAI tool schemas are no longer strict(true) by default
+              - tools not attached to the request can no longer be resolved
+                and executed through the bean fallback (off by default)
+              - a checked exception or Error thrown from an @McpTool method is
+                now a hard failure instead of an error result for the model
         -->
-        <spring-ai.version>2.0.0</spring-ai.version>
+        <spring-ai.version>2.0.1</spring-ai.version>
 
         <lombok.version>1.18.34</lombok.version>
 
@@ -119,10 +136,13 @@
                 Manages BOTH Jacksons in parallel:
                   com.fasterxml.jackson:jackson-bom   (Jackson 2)
                   tools.jackson:jackson-bom           (Jackson 3)
-                So existing code on com.fasterxml.jackson.databind
-                (RawToolExecutor, LlmClient, DemoTools, ToolDefinition) still
-                compiles without declaring a version. What DOES change is what
-                Spring MVC serialises responses with — Jackson 3 by default.
+                All project code is on Jackson 3 now (tools.jackson.*); no
+                class imports com.fasterxml.jackson.databind any more. The
+                annotations (com.fasterxml.jackson.annotation, e.g. JsonInclude,
+                JsonProperty) keep their old package in Jackson 3, which is why
+                that import still appears next to tools.jackson ones. Jackson 2
+                stays managed only for third-party libraries that still use it.
+                Spring MVC serialises responses with Jackson 3 by default.
             -->
             <dependency>
                 <groupId>org.springframework.boot</groupId>

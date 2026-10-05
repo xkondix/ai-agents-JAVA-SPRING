@@ -24,7 +24,7 @@ xkondix:
 # Three signals to localhost:4318; property layout, the Logback->OTel bridge
 # and every silent failure found so far are documented in OBSERVABILITY.md.
 # Getting the tracing endpoint wrong here loses more than the LLM spans: it
-# also loses the tool_call spans that TracingToolProvider adds.
+# also loses the execute_tool spans that TracingToolProvider adds.
 management:
   endpoints:
     web:

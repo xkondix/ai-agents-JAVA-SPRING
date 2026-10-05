@@ -36,8 +36,16 @@ import java.util.Base64;
  *
  * ToolCallingAdvisor has no failure semantics: a tool that answers "ERROR: …"
  * has, as far as the loop is concerned, answered. The model reads the error,
- * decides to try again, and nothing stops it. Observed on 2026-09-15: one
- * request produced OVER A HUNDRED calls to generate_music in a single turn.
+ * decides to try again, and nothing stops it. Observed on 2026-09-15 (on
+ * Spring AI 2.0.0): one request produced OVER A HUNDRED calls to
+ * generate_music in a single turn.
+ *
+ * SINCE SPRING AI 2.0.1 there IS a framework limit: DefaultToolCallingManager
+ * caps a turn at 40 calls per tool and 150 in total (before 2.0.1 there was
+ * no limit at all). That would have stopped the run above at 40 — but the
+ * limit counts CALLS, not FAILURES, and 40 failing calls to a paid generator
+ * are still 40 billable requests. The budget below stays: it stops after
+ * MediaCollector.MAX_FAILURES failures, whatever the tool.
  *
  * The budget was added to MusicTools and VideoTools first because those are
  * the expensive ones — and that was a mistake worth recording. The loop does
@@ -219,7 +227,9 @@ public class MultimodalTools {
     }
 
     /**
-     * The one stop condition the framework does not provide.
+     * The one stop condition the framework does not provide: stop after N
+     * FAILURES. Spring AI 2.0.1 added a cap on the NUMBER of tool calls per
+     * turn, not on how many of them failed.
      *
      * @return the refusal to hand back to the model, or null to proceed
      */

@@ -80,7 +80,7 @@ best demo in the repo.
 ## Tech Stack
 
 - **Java 21** · **Spring Boot 4.0.4** · **Spring Framework 7.0.6**
-- **Spring AI 2.0.0**
+- **Spring AI 2.0.1**
 - **LangChain4j 1.16.3** (`-spring-boot4-` starters + Agentic DSL)
 - **MCP** over Streamable HTTP and STDIO
 - **Jackson 3** (`tools.jackson`)
@@ -108,6 +108,9 @@ best demo in the repo.
   arrives as `null`, with no error anywhere.
 - **Actuator is required for OTLP log export**, even in a module with no web
   server. Drop it and logs back off in silence while traces and metrics work.
+- **Spring AI 2.0.1 caps tool calls per turn** — 40 per tool, 150 in total
+  (`spring.ai.tools.limits.*`); 2.0.0 had no limit at all. The cap counts
+  calls, not failures, so it does not replace a retry budget for paid tools.
 
 Full list: [`OBSERVABILITY.md`](OBSERVABILITY.md) §3.
 
@@ -129,6 +132,7 @@ Full list: [`OBSERVABILITY.md`](OBSERVABILITY.md) §3.
 **Documentation**
 
 - <https://docs.spring.io/spring-ai/reference/> `(Spring AI)`
+- <https://docs.spring.io/spring-ai/reference/upgrade-notes.html> `(Spring AI upgrade notes — what changed in 2.0.0 and 2.0.1)`
 - <https://docs.langchain4j.dev/> `(LangChain4j)`
 - <https://modelcontextprotocol.io/> `(MCP specification)`
 - <https://opentelemetry.io/docs/specs/semconv/gen-ai/> `(GenAI semantic conventions)`

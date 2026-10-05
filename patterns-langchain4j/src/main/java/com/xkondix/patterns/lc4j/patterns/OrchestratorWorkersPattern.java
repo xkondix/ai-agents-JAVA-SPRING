@@ -29,7 +29,7 @@ import org.springframework.stereotype.Service;
  * versus a dozen there. Worth showing side by side.
  *
  * Tools come from an instrumented ToolProvider (see ToolsConfig), so every
- * execution shows up as a "tool_call <name>" span.
+ * execution shows up as an "execute_tool <name>" span.
  *
  * Trace signature: irregular — "chat", then a tool sequence you did NOT
  * know in advance, then "chat"; every run may produce a different shape.

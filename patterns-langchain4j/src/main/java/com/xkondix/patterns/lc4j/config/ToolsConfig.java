@@ -18,7 +18,7 @@ import org.springframework.context.annotation.Configuration;
  * it is next to Spring AI (which instruments tools automatically).
  *
  * Building the provider from the same annotated object and wrapping it in
- * TracingToolProvider gives us "tool_call <name>" spans with no changes to
+ * TracingToolProvider gives us "execute_tool <name>" spans with no changes to
  * the tool code itself.
  */
 @Configuration

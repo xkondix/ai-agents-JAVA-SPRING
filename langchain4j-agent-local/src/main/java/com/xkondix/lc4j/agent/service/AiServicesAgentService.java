@@ -25,9 +25,9 @@ import org.springframework.stereotype.Service;
  * agent actually did.
  *
  * TracingToolProvider (module `common`) builds the same tool set from the
- * same annotated object and wraps every executor in a "tool_call <name>"
+ * same annotated object and wraps every executor in an "execute_tool <name>"
  * span, so this module's traces now match Spring AI and raw-agent:
- *   http post → chat → tool_call → chat
+ *   http post → chat → execute_tool → chat
  */
 @Slf4j
 @Service
