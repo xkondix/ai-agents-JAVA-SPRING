@@ -75,7 +75,7 @@ multimodal:
   # stays on the cheap one, and the premium price is paid only on the calls
   # that actually look at a picture. Downgrade to openai/gpt-4o-mini if the
   # demo is only ever "what is in this photo" and never "where".
-  vision-model: ${OPENROUTER_VISION_MODEL:openai/gpt-4o}
+  vision-model: ${OPENROUTER_VISION_MODEL:openai/gpt-4o-mini}
 
   # Lyria 3 — music, NOT speech. Served through streaming /chat/completions,
   # which is why MusicService talks raw HTTP; see LyriaClient for the full
@@ -225,11 +225,11 @@ spring:
           # analyze_image delegates to multimodal.vision-model (gpt-4o), and
           # music and video have their own clients. Splitting the two is what
           # makes "premium vision, cheap routing" possible at all.
-          model: ${OPENROUTER_MODEL:openai/gpt-4o-mini}
+          model: ${OPENROUTER_MODEL:openai/gpt-4o}
           temperature: 0.3
       image:
         options:
-          model: ${OPENROUTER_IMAGE_MODEL:openai/gpt-image-1}
+          model: ${OPENROUTER_IMAGE_MODEL:google/gemini-3-pro-image}
           size: 1024x1024
       audio:
         speech:

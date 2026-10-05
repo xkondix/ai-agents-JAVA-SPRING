@@ -133,21 +133,21 @@ public class LlmClient {
     // ── OpenAI / OpenRouter ───────────────────────────────────────────────
 
     private ChatResponse callOpenAi(List<Message> messages, List<ToolDefinition> tools) {
-        var cfg = props.getOpenai();
-        String url = cfg.getBaseUrl() + "/chat/completions";
+        var config = props.getOpenai();
+        String url = config.getBaseUrl() + "/chat/completions";
 
         var body = new ChatRequest(
-                cfg.getModel(),
+                config.getModel(),
                 messages,
                 tools.isEmpty() ? null : tools,
-                cfg.getTemperature(),
+                config.getTemperature(),
                 false);
 
         log.debug("[LLM] OpenAI request: model={} messages={} tools={}",
-                cfg.getModel(), messages.size(),
+                config.getModel(), messages.size(),
                 tools.isEmpty() ? 0 : tools.size());
 
-        return doPost(url, "Bearer " + cfg.getApiKey(), body, cfg.getTimeoutSeconds());
+        return doPost(url, "Bearer " + config.getApiKey(), body, config.getTimeoutSeconds());
     }
 
     // ── HTTP ──────────────────────────────────────────────────────────────

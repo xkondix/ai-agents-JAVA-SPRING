@@ -57,6 +57,8 @@ logging:
   level:
     com.xkondix: DEBUG
     org.springframework.ai: INFO
+    org.springframework.ai.chat.client.advisor: DEBUG
+
 
 ---
 # ── Profile: local — Ollama on this machine ───────────────────────────────
