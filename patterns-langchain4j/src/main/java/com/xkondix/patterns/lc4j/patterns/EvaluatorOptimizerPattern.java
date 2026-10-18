@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
  * PATTERN 4 — Evaluator-optimizer (generate -> critique -> improve loop).
  *
  * LangChain4j implementation: THE flagship of the Agentic DSL —
- * loopBuilder().exitCondition(scope -> scope.readState("score", 0.0) >= THRESHOLD)
+ * loopBuilder().exitCondition(scope -> scope.readState("evaluation", …).score() >= THRESHOLD)
  * .maxIterations(4). The loop, the state handoff and the stop condition are
  * all declarative. Compare with patterns-spring-ai, where the same pattern
  * is a hand-written for loop — the sharpest DSL-vs-plain-Java contrast
@@ -47,6 +47,12 @@ import org.springframework.stereotype.Service;
  * use the same number on purpose — it is the one knob that decides whether
  * this demo shows a loop or a straight line.
  *
+ * THE FIXER READS THE FEEDBACK. The scorer used to return a bare number,
+ * so the fixer knew THAT a lineup failed but never WHY, and could only
+ * re-apply the generic rules in its own prompt. It now returns the same
+ * Evaluation(score, feedback) record as patterns-spring-ai, stored under
+ * "evaluation", and the fixer reads it: one pattern name, one algorithm.
+ *
  * Trace signature: N repetitions of the chat+chat pair.
  */
 @Slf4j
@@ -56,6 +62,9 @@ public class EvaluatorOptimizerPattern {
     /** Kept in sync with patterns-spring-ai and with the flow diagram in chat-ui. */
     private static final double THRESHOLD = 0.85;
     private static final int MAX_ITERATIONS = 4;
+
+    /** Same shape as in patterns-spring-ai: a verdict AND the reason for it. */
+    public record Evaluation(double score, String feedback) {}
 
     public interface LineupProposer {
         @Agent("Proposes a starting XI for a squad")
@@ -74,10 +83,10 @@ public class EvaluatorOptimizerPattern {
                 - GK, DEF, MID and ATT all covered and the formation coherent: 0.8 or above
                 - reserve 0.9 and above for a lineup that also names shirt numbers
                   for every starter and states the formation explicitly
-                Return ONLY the number.
+                Return the score and concrete feedback.
                 Squad: {{squadData}}
                 Lineup: {{solution}}""")
-        double score(@V("squadData") String squadData, @V("solution") String solution);
+        Evaluation score(@V("squadData") String squadData, @V("solution") String solution);
     }
 
     public interface LineupFixer {
@@ -85,8 +94,10 @@ public class EvaluatorOptimizerPattern {
         @UserMessage("Rewrite this lineup so that it has exactly 11 starters, every one "
                 + "of them taken from the squad list (no placeholders, no outsiders), "
                 + "all lines covered, the formation stated explicitly and a shirt number "
-                + "next to every starter. Squad: {{squadData}}\nCurrent lineup: {{solution}}")
-        String fix(@V("squadData") String squadData, @V("solution") String solution);
+                + "next to every starter. Address this feedback: {{evaluation}}"
+                + "\nSquad: {{squadData}}\nCurrent lineup: {{solution}}")
+        String fix(@V("squadData") String squadData, @V("solution") String solution,
+                   @V("evaluation") Evaluation evaluation);
     }
 
     /** Typed entry point: proposer once, then the review loop. */
@@ -104,7 +115,7 @@ public class EvaluatorOptimizerPattern {
                 .build();
         var scorer = AgenticServices.agentBuilder(LineupScorer.class)
                 .chatModel(chatModel)
-                .outputKey("score")
+                .outputKey("evaluation")
                 .build();
         var fixer = AgenticServices.agentBuilder(LineupFixer.class)
                 .chatModel(chatModel)
@@ -115,7 +126,8 @@ public class EvaluatorOptimizerPattern {
         var reviewLoop = AgenticServices.loopBuilder()
                 .subAgents(scorer, fixer)
                 .maxIterations(MAX_ITERATIONS)
-                .exitCondition(scope -> scope.readState("score", 0.0) >= THRESHOLD)
+                .exitCondition(scope -> scope.readState("evaluation", new Evaluation(0.0, ""))
+                        .score() >= THRESHOLD)
                 .build();
 
         this.workflow = AgenticServices.sequenceBuilder(LineupWorkflow.class)

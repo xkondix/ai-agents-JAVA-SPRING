@@ -112,12 +112,7 @@ spring:
 # parented to the incoming traceparent, but never exported — the agent trace
 # looks like it stops at the HTTP call while both sides work fine.
 management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,prometheus,metrics,mappings
   tracing:
-    enabled: true
     sampling:
       probability: 1.0
   opentelemetry:

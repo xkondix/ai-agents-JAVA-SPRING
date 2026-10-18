@@ -4,6 +4,8 @@ import com.xkondix.common.milan.MilanKnowledgeBase;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.UserMessage;
+import io.micrometer.context.ContextExecutorService;
+import io.micrometer.context.ContextSnapshotFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -39,8 +41,13 @@ public class ParallelizationPattern {
     }
 
     private final CandidateScorer scorer;
-    private final ExecutorService executor =
-            Executors.newVirtualThreadPerTaskExecutor();
+    // The trace context lives in a ThreadLocal of the request thread. A new
+    // virtual thread starts without it, so every branch used to open its own
+    // trace and the /parallel trace showed a single HTTP span. The wrapper
+    // captures the context at submit time and restores it in the task.
+    private final ExecutorService executor = ContextExecutorService.wrap(
+            Executors.newVirtualThreadPerTaskExecutor(),
+            ContextSnapshotFactory.builder().build());
 
     public ParallelizationPattern(ChatModel chatModel) {
         this.scorer = AiServices.builder(CandidateScorer.class)

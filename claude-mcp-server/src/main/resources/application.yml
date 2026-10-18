@@ -166,7 +166,6 @@ claude-mcp:
 # existing Grafana query valid while quietly changing what each number means.
 management:
   tracing:
-    enabled: true
     sampling:
       probability: 1.0             # demo/dev: keep every trace
   opentelemetry:
