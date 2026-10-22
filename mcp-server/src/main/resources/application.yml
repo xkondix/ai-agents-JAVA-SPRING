@@ -116,6 +116,13 @@ management:
     sampling:
       probability: 1.0
   opentelemetry:
+    # Same pair as claude-mcp-server, with the other transport. Resource
+    # attributes are attached to every span, metric and log of this process,
+    # so Tempo can split the two servers by transport alone:
+    #   {resource.mcp.transport="streamable-http"}  vs  {resource.mcp.transport="stdio"}
+    resource-attributes:
+      deployment.environment.name: local
+      mcp.transport: streamable-http
     tracing:
       export:
         otlp:

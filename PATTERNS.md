@@ -14,7 +14,8 @@ not an omission: the DSL earns its place where a pattern has *state and a
 condition* (chaining, routing, the evaluator loop) and earns nothing where a
 pattern only has *concurrency* (parallelization) — there `CompletableFuture`
 does the same job and hides less. Orchestrator-workers skips
-`supervisorBuilder()` for a different reason, explained below.
+`supervisorBuilder()` for a different reason: the plan should be a typed
+value you can log, explained below.
 
 One class per pattern, named after the pattern. Agents are Spring beans,
 built once in the constructor and injected where needed. Shared domain data
@@ -207,20 +208,20 @@ flowchart TB
     W3 --> O
 ```
 
-- **LC4j**: orchestrator-as-agent — one AiServices agent whose workers are the
-  Milan tools; the model plans inside a single conversation
-  (`supervisorBuilder()` is the heavier DSL variant with full sub-agents, left
-  out on purpose so the two readings stay distinguishable).
+- **LC4j**: the same three phases as Spring AI — a `Planner` AiService with
+  structured output (a `Plan` record) → one `Worker` call per subtask, tools
+  attached → a `Synthesizer` call, with the same prompts on both sides. An
+  earlier version was one AiServices agent with tools; that is an agent, not
+  orchestrator-workers. `supervisorBuilder()` would let a supervisor LLM pick
+  the next sub-agent turn by turn, with no upfront plan to log.
 - **Spring AI**: an explicit pipeline — planner call with structured output (a
   `Plan` record) → one worker call per subtask → synthesis call.
-- **The timings are NOT comparable here**, and the UI says so under the
-  results. LangChain4j plans in-conversation (~2 LLM calls); Spring AI runs
-  planner → workers → synthesis (~10 calls, measured 17.4 s versus 4.8 s).
-  Two valid readings of the same pattern, doing different amounts of work —
-  presenting the difference as a framework benchmark would be dishonest.
-- **Trace signature**: irregular — a tool sequence you did NOT know in
-  advance; every run may produce a different shape. 63 spans versus 7 on the
-  same request.
+- **The timings are comparable**: both modules run planner → workers →
+  synthesis with the same prompts. The number of worker calls still varies
+  per run, because the plan does.
+- **Trace signature**: a plan `chat`, one worker `chat` per subtask with its
+  tool spans, then a final `chat`. How many workers run is decided at
+  runtime, so every run may produce a different shape.
 
 ---
 

@@ -72,11 +72,10 @@ spring:
     ollama:
       base-url: http://localhost:11434
       chat:
-        options:
-          # llama3.1 (not gemma3): local tools require function calling,
-          # which gemma3 does not support.
-          model: llama3.1:8b
-          temperature: 0.3
+        # llama3.1 (not gemma3): local tools require function calling,
+        # which gemma3 does not support.
+        model: llama3.1:8b
+        temperature: 0.3
 
 ---
 # ── Profile: openrouter — hosted models, OpenAI-compatible API ────────────
@@ -101,10 +100,7 @@ spring:
       base-url: https://openrouter.ai/api/v1
       api-key: ${OPENROUTER_API_KEY}
       chat:
-        options:
-          # The .options infix SURVIVED for chat in 2.0 (OpenAiChatProperties
-          # still nests an Options object under spring.ai.openai.chat).
-          # It was flattened only for embedding, image, audio, moderation
-          # and OCR — do not "fix" those by analogy with this block.
-          model: ${OPENROUTER_MODEL:openai/gpt-4o-mini}   # vendor prefix required on OpenRouter
-          temperature: 0.3
+        # Flat keys. The nested spring.ai.openai.chat.options.* still binds in
+        # Spring AI 2.0, but it is deprecated for removal in 3.0.
+        model: ${OPENROUTER_MODEL:openai/gpt-4o-mini}   # vendor prefix required on OpenRouter
+        temperature: 0.3

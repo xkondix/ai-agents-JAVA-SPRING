@@ -240,9 +240,9 @@ function OrchestratorDiagram() {
       <Arrow d="M200 200 L200 216" />
       <Arrow d="M336 200 L336 236 L250 236 L250 216" />
       {/* The third worker is deliberately unnamed: the whole point of this
-          pattern is that the orchestrator decides WHICH tools to call, and
-          how many, at runtime. Three fixed named boxes suggested a known
-          plan — which is parallelization, not orchestrator-workers. */}
+          pattern is that the orchestrator decides WHICH subtasks to hand
+          out, and how many, at runtime. Three fixed named boxes suggested a
+          known plan — which is parallelization, not orchestrator-workers. */}
       <text x={200} y={266} textAnchor="middle" fill={C.sub} fontSize="14.5">
         which workers, and how many,
       </text>

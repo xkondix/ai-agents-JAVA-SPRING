@@ -2,6 +2,7 @@ package com.xkondix.common.observability;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
+import dev.langchain4j.service.tool.AiServiceTool;
 import dev.langchain4j.service.tool.DefaultToolExecutor;
 import dev.langchain4j.service.tool.ToolExecutor;
 import dev.langchain4j.service.tool.ToolProvider;
@@ -82,9 +83,15 @@ public class TracingToolProvider implements ToolProvider {
             return result;
         }
 
+        // aiServiceTools(), not the tools() map deprecated since LangChain4j 1.14.0:
+        // toBuilder() keeps each tool's ReturnBehavior, the map form reset every
+        // tool to TO_LLM.
         ToolProviderResult.Builder traced = ToolProviderResult.builder();
-        result.tools().forEach((specification, executor) ->
-                traced.add(specification, wrap(specification.name(), executor)));
+        for (AiServiceTool tool : result.aiServiceTools()) {
+            traced.add(tool.toBuilder()
+                    .toolExecutor(wrap(tool.name(), tool.toolExecutor()))
+                    .build());
+        }
         return traced.build();
     }
 

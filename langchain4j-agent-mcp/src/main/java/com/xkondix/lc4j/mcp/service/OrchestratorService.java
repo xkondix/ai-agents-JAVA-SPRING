@@ -16,9 +16,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -30,20 +28,18 @@ import java.util.UUID;
  * tools and picks one. This is the core MCP orchestrator demo for
  * Presentation 2.
  *
- * ── THE SECOND MCP CLIENT IS OFF, AND STAYS OFF ────────────────────────────
+ * ── ONE SERVER, ONE CLIENT ─────────────────────────────────────────────────
  *
- * `lc4j.mcp.code-server.enabled` wires in a second McpClient to show that the
- * flat tool list can span several servers. It is disabled by default and
- * there is currently nothing for it to connect to: the file-tools server in
- * this repo (`claude-mcp-server`) speaks **STDIO** and is launched by Claude
- * Desktop, not by an HTTP client.
+ * mcp-server is the only MCP server this agent connects to. A second server
+ * would mean a second McpClient in the list below, and McpToolProvider would
+ * merge its tools into the same flat list. claude-mcp-server is not one of
+ * them: it speaks STDIO and is launched by Claude Desktop.
  *
- * The system prompt therefore does NOT list file tools. It used to — a
- * leftover from when that server ran over HTTP on port 8086 — and an
- * unavailable tool in a prompt is worse than no tool: the model offers it,
- * tries to use it, and only then discovers it does not exist. The rule
- * "say so instead of pretending" does not help, because from the model's
- * point of view the prompt is the evidence.
+ * The system prompt lists only tools that exist. An unavailable tool in a
+ * prompt is worse than no tool: the model offers it, tries to use it, and only
+ * then discovers it does not exist. The rule "say so instead of pretending"
+ * does not help, because from the model's point of view the prompt is the
+ * evidence.
  *
  * Observability: McpToolProvider is wrapped in TracingToolProvider (module
  * `common`, shared with patterns-langchain4j), so every tool execution shows
@@ -51,13 +47,15 @@ import java.util.UUID;
  * shape as Spring AI and raw-agent traces
  * (http post → chat → execute_tool → chat).
  *
- * ── NO TRACE PROPAGATION HERE, ON PURPOSE ──────────────────────────────────
+ * ── TRACE PROPAGATION IS OFF BY DEFAULT, ON PURPOSE ────────────────────────
  *
- * This module does not inject the W3C trace context into MCP calls, so a tool
- * call produces TWO separate traces: one for the agent, one for mcp-server.
- * `spring-ai-agent-mcp` does propagate and shows `Services: 2` for the same
- * operation. Same protocol, same transport, same tool — the difference is a
- * client implementation decision, and having both side by side is the point.
+ * By default this module does not inject the W3C trace context into MCP
+ * calls, so a tool call produces TWO separate traces: one for the agent, one
+ * for mcp-server. `spring-ai-agent-mcp` does propagate and shows `Services: 2`
+ * for the same operation. Same protocol, same transport, same tool — the
+ * difference is a client implementation decision, and having both side by
+ * side is the point. lc4j.mcp.trace-propagation.enabled=true turns it on with
+ * one header supplier (see McpClientConfig), so the switch itself is a demo.
  * See OBSERVABILITY.md.
  *
  * ── MEMORY IS PER CONVERSATION, NOT PER PROCESS ─────────────────────────────
@@ -94,7 +92,8 @@ public class OrchestratorService {
                 Use the most appropriate available tool for each task. If no tool
                 fits, say so instead of pretending to use one.
                 Always explain which tool you chose and why.
-                For operations that modify data, always wait for human approval.
+                save_note and delete_note wait until a human approves or rejects them.
+                Report what the tool returned. Never ask the user to approve again.
                 """)
         String chat(@MemoryId String conversationId, @UserMessage String message);
     }
@@ -104,21 +103,10 @@ public class OrchestratorService {
     public OrchestratorService(
             ChatModel model,
             @Qualifier("javaMcpClient") McpClient javaMcpClient,
-            @Qualifier("codeMcpClient") Optional<McpClient> codeMcpClient,
             ObjectProvider<Tracer> tracerProvider) {
 
-        List<McpClient> clients = new ArrayList<>();
-        clients.add(javaMcpClient);
-        codeMcpClient.ifPresentOrElse(
-                client -> {
-                    clients.add(client);
-                    log.info("second MCP client ENABLED — its tools join the same flat list");
-                },
-                () -> log.info("second MCP client disabled "
-                        + "(lc4j.mcp.code-server.enabled=false) — mcp-server tools only"));
-
         ToolProvider toolProvider = new TracingToolProvider(
-                McpToolProvider.builder().mcpClients(clients).build(),
+                McpToolProvider.builder().mcpClients(List.of(javaMcpClient)).build(),
                 tracerProvider.getIfAvailable());
 
         this.assistant = AiServices.builder(OrchestratorAssistant.class)

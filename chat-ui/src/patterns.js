@@ -146,20 +146,18 @@ export const PATTERNS = [
   {
     id:          'orchestrator',
     name:        '5. Orchestrator-workers',
-    description: 'Central LLM plans subtasks at runtime and delegates to tool workers.',
-    traceHint:   'Tempo: an irregular tool sequence you did not know in advance.',
+    description: 'Central LLM plans subtasks at runtime, workers execute them, a final call synthesizes.',
+    traceHint:   'Tempo: a plan, then as many workers as the plan decided, then a synthesis.',
     method:      'POST',
     path:        '/api/v1/patterns/orchestrator',
     input:       'text',
     defaultValue: 'Compare the 2007 and 2024 squads and pick the stronger midfield.',
-    // TWO READINGS OF THE SAME PATTERN, and the timings are NOT comparable:
-    // LC4j lets one agent plan inside a single conversation (~2 LLM calls),
-    // Spring AI makes the three phases explicit (~10 calls). Both are valid
-    // orchestrator-workers; they answer different questions. supervisorBuilder()
-    // would be the DSL route on the LC4j side — deliberately not used, so
-    // that the "model plans in-conversation" variant is visible at all.
+    // Both modules run the same three phases with the same prompts:
+    // planner (structured output) → one worker call per subtask → synthesis,
+    // so the timings are comparable. supervisorBuilder() would be the DSL
+    // route on the LC4j side — not used, so the plan stays a typed value.
     impl: {
-      lc4j:   'AiServices — one agent, tools, model plans in-conversation',
+      lc4j:   'plain Java + AiServices — explicit planner → workers → synthesis',
       spring: 'plain Java — explicit planner → workers → synthesis',
     },
   },

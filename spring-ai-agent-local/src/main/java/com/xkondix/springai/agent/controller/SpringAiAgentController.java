@@ -37,7 +37,7 @@ public class SpringAiAgentController {
 
     private final SpringAiAgentService agentService;
 
-    @Value("${spring.ai.ollama.chat.options.model:ollama/unknown}")
+    @Value("${spring.ai.ollama.chat.model:ollama/unknown}")
     private String modelName;
 
     @PostMapping("/chat")
