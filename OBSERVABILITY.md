@@ -164,7 +164,8 @@ outside all four.
 4. One warm-up request to every agent (Spring AI meters are not pre-registered).
 5. Open the Traces row: every module has a trace; `spring-ai-agent-mcp` shows
    Services: 2 and `langchain4j-agent-mcp` shows Services: 1 — that contrast is
-   the demo, not a defect.
+   the demo, not a defect. `lc4j.mcp.trace-propagation.enabled=true` joins the
+   LangChain4j side too; leave it `false` until that part of the demo.
 6. Click "Logs for this span" on one chat span ~10 s after the request — the
    log export is batched.
 7. If video is part of the demo, set `multimodal.video.enabled=true` **and turn

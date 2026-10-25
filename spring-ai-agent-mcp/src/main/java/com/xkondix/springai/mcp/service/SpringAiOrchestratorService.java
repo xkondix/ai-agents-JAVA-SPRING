@@ -12,13 +12,12 @@ import org.springframework.stereotype.Service;
  *
  * Comparison with LangChain4j OrchestratorService:
  *   LangChain4j: McpToolProvider -> toolProvider() in AiServices
- *   Spring AI:   ToolCallbackProvider (autoconfigured) -> .toolCallbacks(...)
+ *   Spring AI:   ToolCallbackProvider (autoconfigured) -> .tools(...)
  *
- * API pitfall worth remembering:
- *   .tools(Object...)          — for instances with @Tool-annotated methods
- *   .toolCallbacks(callbacks)  — for ready ToolCallback objects (our case)
- * Passing ToolCallbacks into .tools(...) silently registers NOTHING —
- * the model then answers from imagination instead of calling tools.
+ * SPRING AI 2.0: toolCallbacks(...) is deprecated for removal in 3.0.
+ * tools(Object...) takes ToolCallbacks, providers and @Tool objects alike.
+ * The autoconfigured provider (SyncMcpToolCallbackProvider) caches the tool
+ * list and refreshes it when a server sends tools/list_changed.
  *
  * Connected MCP servers (configured in application.yml, `streamable-http`):
  *   - java-mcp-server (port 8081) — game stats, knowledge base, weather
@@ -56,12 +55,12 @@ public class SpringAiOrchestratorService {
                         You have access to tools from the java-mcp-server:
                         get_game_stats, save_note, search_notes, delete_note, get_weather.
                         Use the most appropriate tool for each task.
-                        For operations that modify data (save_note, delete_note),
-                        always inform the user that human approval is required.
+                        save_note and delete_note wait until a human approves or rejects them.
+                        Report what the tool returned. Never ask the user to approve again.
                         """)
                 .user(message)
                 .advisors(new SimpleLoggerAdvisor())
-                .toolCallbacks(mcpToolCallbackProvider.getToolCallbacks())
+                .tools(mcpToolCallbackProvider)
                 .call()
                 .content();
     }

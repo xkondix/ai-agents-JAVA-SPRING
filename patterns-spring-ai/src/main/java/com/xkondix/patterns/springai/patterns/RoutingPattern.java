@@ -61,7 +61,8 @@ public class RoutingPattern {
                             for permission to look something up — just do it.
                             """)
                     .user(question)
-                    .call().content();
+                    .call()
+                    .content();
             case TRANSFERS -> milanAgent.prompt()
                     .system("""
                             You are a transfer-market specialist. ALWAYS call
@@ -69,7 +70,8 @@ public class RoutingPattern {
                             should check — check first, then answer with data.
                             """)
                     .user(question)
-                    .call().content();
+                    .call()
+                    .content();
             case RUMORS -> milanAgent.prompt()
                     .system("""
                             You are an insider on AC Milan transfer rumors.
@@ -85,7 +87,8 @@ public class RoutingPattern {
                             rumors and clearly mark them as unconfirmed.
                             """)
                     .user(question)
-                    .call().content();
+                    .call()
+                    .content();
         };
     }
 

@@ -1,6 +1,8 @@
 package com.xkondix.patterns.springai.patterns;
 
 import com.xkondix.common.milan.MilanKnowledgeBase;
+import io.micrometer.context.ContextExecutorService;
+import io.micrometer.context.ContextSnapshotFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -96,8 +98,13 @@ public class ParallelizationPattern {
     private static final int MAX_ATTEMPTS = 2;
 
     private final ChatClient plainAgent;
-    private final ExecutorService executor =
-            Executors.newVirtualThreadPerTaskExecutor();
+    // The trace context lives in a ThreadLocal of the request thread. A new
+    // virtual thread starts without it, so every branch used to open its own
+    // trace and the /parallel trace showed a single HTTP span. The wrapper
+    // captures the context at submit time and restores it in the task.
+    private final ExecutorService executor = ContextExecutorService.wrap(
+            Executors.newVirtualThreadPerTaskExecutor(),
+            ContextSnapshotFactory.builder().build());
 
     public ParallelizationPattern(@Qualifier("plainAgent") ChatClient plainAgent) {
         this.plainAgent = plainAgent;

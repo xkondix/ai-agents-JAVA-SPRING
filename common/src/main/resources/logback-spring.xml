@@ -72,7 +72,7 @@
     </logger>
 
     <!--
-        LANGCHAIN4J RAW HTTP — valuable to watch, too expensive to ship.
+        LANGCHAIN4J RAW HTTP — valuable to watch, expensive to ship.
 
         Driven by log-requests/log-responses in application.yml, this logger
         prints the full outgoing request (model, temperature, every tool schema,
@@ -84,13 +84,14 @@
         narrates its LOOP instead — is a talking point in itself. LangChain4j
         masks the Authorization header, but not response bodies.
 
-        Not worth keeping in Loki: the same prompt and completion are already
-        on the span as gen_ai.* attributes, with correlation, in a form that is
-        far easier to query.
+        additivity="true": the lines also go through root to the OTEL
+        appender, so they land in Loki next to their trace. No appender-ref
+        here, because root already prints to CONSOLE and a second ref would
+        print every line twice. Mind the volume: the same prompt and completion
+        are already on the span as gen_ai.* attributes. Set it back to false
+        (with the CONSOLE ref) to keep these lines out of Loki.
     -->
-    <logger name="dev.langchain4j.http.client.log" additivity="false">
-        <appender-ref ref="CONSOLE"/>
-    </logger>
+    <logger name="dev.langchain4j.http.client.log" additivity="true"/>
 
     <!--
         MCP PROTOCOL CHATTER — a genuine volume problem.

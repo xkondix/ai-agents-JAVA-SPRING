@@ -78,9 +78,8 @@ spring:
     ollama:
       base-url: http://localhost:11434
       chat:
-        options:
-          model: llama3.1:8b
-          temperature: 0.3
+        model: llama3.1:8b
+        temperature: 0.3
 
 ---
 # API key ONLY from the OS env var OPENROUTER_API_KEY (public repo!).
@@ -100,8 +99,7 @@ spring:
       base-url: https://openrouter.ai/api/v1
       api-key: ${OPENROUTER_API_KEY}
       chat:
-        options:
-          # The .options infix SURVIVED for chat in 2.0 (OpenAiChatProperties
-          # still nests an Options object under spring.ai.openai.chat).
-          model: ${OPENROUTER_MODEL:openai/gpt-4o-mini}
-          temperature: 0.3
+        # Flat keys. The nested spring.ai.openai.chat.options.* still binds in
+        # Spring AI 2.0, but it is deprecated for removal in 3.0.
+        model: ${OPENROUTER_MODEL:openai/gpt-4o-mini}
+        temperature: 0.3

@@ -8,13 +8,13 @@ spring:
   profiles:
     default: openrouter   # switch back to Ollama with --spring.profiles.active=local
 
-# claude-mcp-server runs in STDIO mode, dedicated to Claude Desktop, so it is
-# not reachable over HTTP from here. Kept disabled: an eager client init
-# against a non-existent endpoint would kill application startup.
 lc4j:
   mcp:
-    code-server:
-      enabled: false
+    # Off by default: a tool call produces two traces (agent + mcp-server), the
+    # contrast with spring-ai-agent-mcp. true = traceparent on every POST /mcp,
+    # one trace with Services: 2. See McpClientConfig.
+    trace-propagation:
+      enabled: true
 
 # ── Prompt / completion content on LangChain4j spans ─────────────────────
 # LC4j counterpart of spring.ai.chat.observations.log-prompt/log-completion.

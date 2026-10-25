@@ -166,12 +166,18 @@ claude-mcp:
 # existing Grafana query valid while quietly changing what each number means.
 management:
   tracing:
-    enabled: true
     sampling:
       probability: 1.0             # demo/dev: keep every trace
   opentelemetry:
+    # Resource attributes ride on EVERY signal this process exports (spans,
+    # metrics, logs), so they are set once here instead of on each span.
+    # mcp-server sets the same pair with mcp.transport=streamable-http, which
+    # makes one Tempo query enough to split the traffic by transport:
+    #   {resource.mcp.transport="stdio"}  vs  {resource.mcp.transport="streamable-http"}
+    # deployment.environment.name, not deployment.environment: the old key is
+    # deprecated in the OTel semantic conventions since 1.27.
     resource-attributes:
-      deployment.environment: local
+      deployment.environment.name: local
       mcp.transport: stdio
     tracing:
       export:

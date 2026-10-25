@@ -150,20 +150,6 @@ function PatternCard({ pattern }) {
           })}
         </div>
       )}
-
-      {/* Orchestrator-workers is the one pattern where the two modules run
-          genuinely different algorithms (in-conversation planning vs an
-          explicit three-phase pipeline). Without saying so, the 5x gap in
-          the timings above reads as "Spring AI is slow" rather than
-          "these measure different work". */}
-      {results && pattern.id === 'orchestrator' && (
-        <p className="text-base text-amber-500/80 mt-4">
-          Timings are not comparable here: LangChain4j plans inside one
-          conversation (~2 LLM calls), Spring AI runs an explicit
-          planner → workers → synthesis pipeline (~10 calls). Two valid
-          readings of the same pattern.
-        </p>
-      )}
     </div>
   )
 }
