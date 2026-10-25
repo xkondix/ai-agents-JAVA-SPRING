@@ -21,9 +21,12 @@
 
 ## 🚀 Quick Start
 
+You need your own [OpenRouter](https://openrouter.ai) API key.
+
 ```
-docker compose up -d          # Grafana LGTM + Redis + Ollama
-setx OPENROUTER_API_KEY "sk-or-..."   # Windows; reopen the shell afterwards
+docker compose up -d                       # Grafana LGTM + Redis + Ollama
+setx OPENROUTER_API_KEY "sk-or-..."        # Windows; reopen the shell afterwards
+export OPENROUTER_API_KEY="sk-or-..."      # macOS / Linux
 mvn clean install -DskipTests
 ```
 
@@ -50,7 +53,7 @@ cd claude-mcp-server && mvn clean package
 |---|---|---|
 | `raw-agent` | 8090 | The agent loop with no framework at all |
 | `langchain4j-agent-local` | 8082 | Raw loop + `AiServices` side by side |
-| `langchain4j-agent-mcp` | 8083 | MCP orchestrator, **no** trace propagation |
+| `langchain4j-agent-mcp` | 8083 | MCP orchestrator, trace propagation behind a switch (off by default) |
 | `spring-ai-agent-local` | 8084 | `ChatClient` + Advisors + `@Tool` |
 | `spring-ai-agent-mcp` | 8085 | MCP orchestrator **with** W3C trace propagation |
 | `patterns-langchain4j` | 8087 | Five patterns, Agentic DSL where it pays off |
@@ -66,10 +69,14 @@ Infrastructure: Grafana 3100 · Prometheus 9090 · Tempo 3201 · OTLP 4318 · Re
 
 ## 🎭 Two MCP clients, on purpose
 
-`spring-ai-agent-mcp` propagates the W3C trace context into MCP calls and
-`langchain4j-agent-mcp` deliberately does not. The same tool call produces
-**one trace with two services** in one module and **two unrelated traces** in
-the other.
+`spring-ai-agent-mcp` propagates the W3C trace context into MCP calls out of
+the box. `langchain4j-agent-mcp` does not by default, because its MCP client
+sends requests through the JDK `HttpClient`, which Spring Boot does not
+instrument. The same tool call produces **one trace with two services** in one
+module and **two unrelated traces** in the other.
+
+Set `lc4j.mcp.trace-propagation.enabled=true` and `McpClientConfig` adds the
+`traceparent` header itself, so the LangChain4j module shows one trace too.
 
 Same protocol, same transport, same tool — the difference is a client
 implementation decision, not a property of MCP. That contrast is the single

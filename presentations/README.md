@@ -19,18 +19,27 @@ Endpoints, tools and meters for every module: [`ENDPOINTS.md`](../ENDPOINTS.md).
 
 Read these if you go through the PDF without the talk.
 
-### Some screenshots predate the span rename
+### One tool span name in every trace
 
-The screenshots on the **Observability**, **Traces**, **Default** and
-**Memory in the Loop** slides were taken before the project moved to
-Spring AI 2.0.1. In them the hand-written tool span in `raw-agent` and the
-LangChain4j modules is still called `tool_call <name>`.
+Every trace screenshot (**Observability**, **Traces**, **Advisors Inside the
+Loop**, **Default**, **Memory in the Loop**) shows the tool as
+`execute_tool <name>` with `gen_ai.operation.name=execute_tool`. Spring AI 2.0
+emits that span itself. `raw-agent` and the LangChain4j modules create the
+same span by hand (`RawAgentLoop`, `RawAgentLoopService`, and
+`TracingToolProvider` in `common`), so a tool call looks the same in all three.
 
-The code now emits `execute_tool <name>` with
-`gen_ai.operation.name=execute_tool` — the same name Spring AI has used since
-2.0 (it renamed its own span from `tool_call`). Only the name changed: the
-shape of every trace (`chat → tool → chat`) is exactly what the slides show,
-which is why the screenshots were kept.
+### Which hooks the repo actually uses
+
+Of the five on **Five ways around one loop**, two are wired in:
+`ChatModelListener` (`GenAiMetricsChatModelListener`) and the `ToolProvider`
+wrapper (`TracingToolProvider`), both in `common`.
+
+The code on **Two callbacks instead of a wrapper** is an illustration and is
+not in any module. The reason is the one on the slide: with the default
+`ToolArgumentsErrorHandler`, which rethrows, a tool call whose arguments don't
+parse never reaches `afterToolExecution` (LangChain4j 1.16.3, `ToolService`),
+so a span opened in `beforeToolExecution` would never be closed. The wrapper
+opens and closes the span in one `try`/`finally`.
 
 ### Two memory advisors on purpose
 
