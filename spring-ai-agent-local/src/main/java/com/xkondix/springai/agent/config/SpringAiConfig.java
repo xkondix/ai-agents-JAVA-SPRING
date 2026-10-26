@@ -1,7 +1,6 @@
 package com.xkondix.springai.agent.config;
 
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.context.annotation.Bean;
@@ -24,12 +23,14 @@ import org.springframework.context.annotation.Configuration;
  * own "execute_tool <name>" span. Full note in
  * patterns-spring-ai/config/AgentConfig.
  *
- * THE DEFAULT MEMORY ADVISOR BELOW IS A DELIBERATE DUPLICATE. Every method in
- * SpringAiAgentService adds its own MessageChatMemoryAdvisor per request, so
- * each call runs with two memory advisors on the same conversation id — the
- * setup the documentation advises against, kept to show its effect (two
- * message_chat_memory spans; the question twice in the memory-in-loop
- * prompt). Delete defaultAdvisors(...) to get the documented behaviour.
+ * NO DEFAULT MEMORY ADVISOR. Every method in SpringAiAgentService adds its
+ * own MessageChatMemoryAdvisor per request, so this ChatClient registers
+ * none. An earlier version also registered one here through
+ * defaultAdvisors(...), which put two memory advisors on the same
+ * conversation id in every call: the store kept each question and each
+ * answer twice, and with one advisor moved inside the loop the prompt of the
+ * second iteration carried the question twice. Part I shows that state on
+ * the "Memory Inside && Outside" slide.
  */
 @Configuration
 public class SpringAiConfig {
@@ -40,8 +41,7 @@ public class SpringAiConfig {
     }
 
     @Bean
-    public MessageWindowChatMemory chatMemory(
-            InMemoryChatMemoryRepository repository) {
+    public MessageWindowChatMemory chatMemory(InMemoryChatMemoryRepository repository) {
         return MessageWindowChatMemory.builder()
                 .chatMemoryRepository(repository)
                 .maxMessages(20)
@@ -49,15 +49,10 @@ public class SpringAiConfig {
     }
 
     @Bean
-    public ChatClient chatClient(
-            ChatClient.Builder builder,
-            MessageWindowChatMemory chatMemory) {
-
+    public ChatClient chatClient(ChatClient.Builder builder) {
         return builder
                 .defaultSystem("You are a helpful assistant. " +
                         "Use available tools when needed.")
-                .defaultAdvisors(
-                        MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .build();
     }
 }

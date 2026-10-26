@@ -7,16 +7,6 @@ spring:
     name: spring-ai-agent-local
   profiles:
     default: openrouter   # switch back to Ollama with --spring.profiles.active=local
-  autoconfigure:
-    # Chat provider is selected per profile via spring.ai.model.chat.
-    # Only the non-chat OpenAI autoconfigurations stay excluded permanently —
-    # we never use embeddings/audio/image/moderation in this module.
-    exclude:
-      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
-      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
-      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
-      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
-      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   ai:
     chat:
       observations:

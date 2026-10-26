@@ -41,16 +41,17 @@ parse never reaches `afterToolExecution` (LangChain4j 1.16.3, `ToolService`),
 so a span opened in `beforeToolExecution` would never be closed. The wrapper
 opens and closes the span in one `try`/`finally`.
 
-### Two memory advisors on purpose
+### One memory advisor, except on one slide
 
-On the **Default** and **Memory in the Loop** slides every chain contains two
-`message_chat_memory` spans. That is deliberate: `spring-ai-agent-local`
-registers one `MessageChatMemoryAdvisor` as a default on the `ChatClient` and
-adds another per request — the setup the Spring AI documentation advises
-against — to show its effect. With both outside the loop the first turn looks
-normal; with one moved inside the loop, the second iteration's prompt carries
-the user question twice. Remove the default advisor in `SpringAiConfig` to get
-the documented behaviour.
+**Default** and **Memory in the Loop** use a single `MessageChatMemoryAdvisor`,
+outside and inside the loop. **Memory Inside && Outside** shows a bug from an
+earlier version of this repo: `SpringAiConfig` also registered one through
+`defaultAdvisors(...)`, so every request ran with two advisors on the same
+conversation id and the question was saved twice. To reproduce it, inject
+`MessageWindowChatMemory chatMemory` into the `ChatClient` bean in
+`SpringAiConfig`, add
+`.defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())` and
+call `/api/v1/agent/chat/memory-in-loop`.
 
 ### Versions
 

@@ -37,7 +37,8 @@ public class SpringAiAgentController {
 
     private final SpringAiAgentService agentService;
 
-    @Value("${spring.ai.ollama.chat.model:ollama/unknown}")
+    // OpenAI key first (profile openrouter), Ollama key as the fallback (profile local)
+    @Value("${spring.ai.openai.chat.model:${spring.ai.ollama.chat.model:unknown}}")
     private String modelName;
 
     @PostMapping("/chat")
