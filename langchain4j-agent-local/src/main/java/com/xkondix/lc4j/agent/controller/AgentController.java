@@ -22,7 +22,8 @@ public class AgentController {
     private final RawAgentLoopService rawAgentLoop;
     private final AiServicesAgentService aiServicesAgent;
 
-    @Value("${langchain4j.ollama.chat-model.model-name:ollama/unknown}")
+    // OpenAI key first (profile openrouter), Ollama key as the fallback (profile local)
+    @Value("${langchain4j.open-ai.chat-model.model-name:${langchain4j.ollama.chat-model.model-name:unknown}}")
     private String modelName;
 
     @PostMapping("/raw")

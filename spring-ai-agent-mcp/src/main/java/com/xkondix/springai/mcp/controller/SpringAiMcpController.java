@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
@@ -19,6 +20,10 @@ public class SpringAiMcpController {
 
     private final SpringAiOrchestratorService orchestrator;
 
+    // OpenAI key first (profile openrouter), Ollama key as the fallback (profile local)
+    @Value("${spring.ai.openai.chat.model:${spring.ai.ollama.chat.model:unknown}}")
+    private String modelName;
+
     @PostMapping("/chat")
     @Operation(summary = "Chat with Spring AI orchestrator (Java + Python MCP tools)")
     public ResponseEntity<ChatResponse> chat(
@@ -26,7 +31,7 @@ public class SpringAiMcpController {
         String content = orchestrator.orchestrate(request.message());
         return ResponseEntity.ok(ChatResponse.builder()
                 .content(content)
-                .model("ollama/llama3.1")
+                .model(modelName)
                 .timestamp(Instant.now())
                 .build());
     }

@@ -34,29 +34,36 @@ import org.springframework.stereotype.Service;
  * the loop and makes it log once per lap. That is counter-intuitive enough to
  * be worth saying out loud: order 0 feels like "first" and means "last" here.
  *
- * It is also useful: inside the loop an advisor can observe AND modify every
- * iteration. LangChain4j's AiServices can observe iterations as well (AI
- * Service listeners: AiServiceRequestIssuedEvent per model call,
- * ToolExecutedEvent per tool execution), but a listener cannot change the
- * request. Observe vs modify — that is the contrast this module demonstrates.
+ * It is also useful: inside the loop an advisor sees the request and the
+ * response of every iteration and can change either of them. LangChain4j's
+ * AiServices reaches every iteration too, but through separate hooks: AI
+ * Service listeners observe it (AiServiceRequestIssuedEvent per model call,
+ * ToolExecutedEvent per tool execution) and cannot change anything, while
+ * chatRequestTransformer(...) rewrites each request before it is sent. One
+ * advisor in the chain against several hooks around the loop — that is the
+ * contrast this module demonstrates.
  *
- * ── TWO MEMORY ADVISORS — ON PURPOSE ───────────────────────────────────────
+ * ── ONE MEMORY ADVISOR PER CALL ────────────────────────────────────────────
  *
- * The ChatClient bean in SpringAiConfig registers a MessageChatMemoryAdvisor
- * through defaultAdvisors(...), and every method below adds ANOTHER one per
- * request. The documentation advises against exactly this; it is kept to show
- * what it looks like, not by accident:
+ * Every method below adds exactly one MessageChatMemoryAdvisor, and the
+ * ChatClient bean in SpringAiConfig registers none. Spring AI removes the
+ * duplicates between the loop and memory on its own: with a memory advisor
+ * inside the loop, DefaultChatClient switches off ToolCallingAdvisor's
+ * internal history, and a memory advisor does not re-add history that is
+ * already in the prompt. Nothing stops two memory advisors from writing to
+ * the same conversation id, though.
  *
- *   - Tempo shows two nested message_chat_memory spans in every variant.
- *   - /chat and /chat/advisors: both advisors sit OUTSIDE the loop, so the
- *     first turn looks normal; both of them still write to the same
- *     conversation id.
+ * An earlier version did exactly that, because SpringAiConfig also
+ * registered one through defaultAdvisors(...):
+ *
+ *   - /chat and /chat/advisors: both advisors sat OUTSIDE the loop, so the
+ *     first turn looked normal, but the store kept every question and every
+ *     answer twice.
  *   - /chat/memory-in-loop: one advisor outside, one inside the loop, and the
- *     prompt of the second iteration carries the user question TWICE
+ *     prompt of the second iteration carried the user question TWICE
  *     ("How is the weather in Katowice?", "How is the weather in Katowice?").
  *
- * Remove one of the two registrations to get the documented single-advisor
- * behaviour.
+ * Part I shows that state on the "Memory Inside && Outside" slide.
  *
  * ── SPRING AI 2.0 NOTES ────────────────────────────────────────────────────
  *
@@ -68,8 +75,14 @@ import org.springframework.stereotype.Service;
  *
  * TOOL EXECUTION IS NO LONGER THE MODEL'S JOB. The built-in loop was removed
  * from every ChatModel and lifted into the advisor chain: ChatClient
- * auto-registers a ToolCallingAdvisor whenever tools are present. Do NOT add
- * one by hand — DefaultChatClient enforces exactly one and fails explicitly.
+ * auto-registers a ToolCallingAdvisor on every call, even without static
+ * tools, so that tools added at runtime by another advisor still run. Opt out
+ * per call with AdvisorParams.toolCallingAdvisorAutoRegister(false), or for
+ * every client built from the auto-configured builder with
+ * spring.ai.chat.client.tool-calling.enabled=false. Adding one by hand (to
+ * change its order or options) is allowed: auto-registration then steps
+ * aside, and DefaultChatClient fails only when the chain ends up with more
+ * than one ToolAdvisor.
  *
  * ── SPRING AI 2.0.1 NOTES ──────────────────────────────────────────────────
  *
@@ -105,7 +118,6 @@ public class SpringAiAgentService {
      * Memory sits OUTSIDE the loop (its default order is lower), so it loads
      * the history once before the loop and persists only the final user and
      * assistant messages. Tool requests and tool results never reach the store.
-     * (Plus the second, default memory advisor — see the class comment.)
      */
     public String chat(String conversationId, String message) {
         log.info("Spring AI chat [default]: conversationId={}", conversationId);
@@ -169,9 +181,10 @@ public class SpringAiAgentService {
      * It is only when you build a ToolCallingAdvisor by hand that you have to
      * call .disableInternalConversationHistory() yourself.
      *
-     * The duplicated question in this variant's second iteration comes from
-     * the SECOND memory advisor (the default one, outside the loop), not from
-     * ToolCallingAdvisor — see the class comment.
+     * With this single advisor the question reaches the model once per
+     * iteration. The duplicated question on the "Memory Inside && Outside"
+     * slide came from a second memory advisor that SpringAiConfig used to
+     * register as a default — see the class comment.
      */
     public String chatWithMemoryInLoop(String conversationId, String message) {
         log.info("Spring AI chat [memory in loop]: conversationId={}", conversationId);

@@ -26,9 +26,10 @@ import org.springframework.ai.chat.client.advisor.api.BaseAdvisor;
  *
  * In Spring AI 2.0 tool execution was lifted out of the ChatModel and into
  * this same chain: ChatClient registers a ToolCallingAdvisor automatically
- * whenever .tools(...) is present. It does not merely observe the response —
- * it sees tool_calls, executes them, appends the results and RE-ENTERS the
- * downstream chain, looping until no tool calls remain.
+ * on every call, unless you opt out or add one yourself. It does not merely
+ * observe the response — it sees tool_calls, executes them, appends the
+ * results and RE-ENTERS the downstream chain, looping until no tool calls
+ * remain.
  *
  * So the agent loop is literally a link in the list this class belongs to.
  * That is the structural difference from LangChain4j: AiServices hides the
@@ -55,14 +56,16 @@ import org.springframework.ai.chat.client.advisor.api.BaseAdvisor;
  * first; that was simply wrong.
  *
  * That turns out to be the useful position: inside the loop an advisor sees
- * every iteration AND can change it. LangChain4j can OBSERVE iterations too —
- * AiServices.registerListener(...) with an AiServiceRequestIssuedEvent
- * listener (fires once per model call, i.e. once per lap) and a
- * ToolExecutedEvent listener (once per tool execution), both @Experimental
- * in 1.x — but those listeners only watch; they cannot rewrite the request.
- * The real difference is observe vs modify, not visible vs invisible. (An
- * earlier version of this comment claimed LangChain4j had no per-iteration
- * seam at all; that was wrong as well.)
+ * every iteration AND can change it. LangChain4j reaches every iteration
+ * too, just not through one object. AiServices.registerListener(...) with an
+ * AiServiceRequestIssuedEvent listener (fires once per model call, i.e. once
+ * per lap) and a ToolExecutedEvent listener (once per tool execution), both
+ * of them @Experimental in 1.x, only watch; chatRequestTransformer(...) is
+ * the hook that rewrites each request before it is sent. The real difference
+ * is one advisor for both directions versus several separate hooks, not
+ * visible vs invisible. (Earlier versions of this comment claimed LangChain4j
+ * had no per-iteration seam at all, and then that it could only observe;
+ * both were wrong.)
  *
  * To see only the original request instead, give it an order BELOW
  * ToolCallingAdvisor's (for example HIGHEST_PRECEDENCE + 100). Then it runs
