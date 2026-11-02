@@ -51,7 +51,8 @@ public class RoutingPattern {
         Route route = classify(question);
         log.info("[ROUTING] '{}' -> {}", question, route);
 
-        // Dispatch — each specialist has its own system prompt (and tools)
+        // Dispatch — each specialist has its own system prompt. The tools are
+        // shared: milanAgent carries all four, getSecretRumors included.
         return switch (route) {
             case SQUAD -> milanAgent.prompt()
                     .system("""
