@@ -75,9 +75,9 @@ flowchart LR
 
 ## 2. Routing
 
-A cheap classifier picks the specialist. Separation of concerns: the
-transfer specialist has different prompts/tools than the squad specialist;
-the router only needs to recognize, not answer.
+A cheap classifier picks the specialist. Separation of concerns: each
+specialist has its own prompt; the router only needs to recognize, not
+answer.
 
 ```mermaid
 flowchart LR
@@ -106,6 +106,11 @@ flowchart LR
   it. The specialist decides the secret tool is needed; only then does
   `getSecretRumors()` block on human approval and return the data — or
   `ACCESS DENIED`, which the model relays to the user as a refusal.
+- **Tools are shared, for now.** Every specialist gets all four tools — one
+  `milanAgent` in Spring AI, the same `milanToolProvider` for all three
+  specialists in LC4j — so the squad specialist could call `getSecretRumors()`
+  and trigger the gate. Giving each specialist only its own tools is the
+  obvious next step; routing is the natural place for least privilege.
 - **Prompt lesson**: a specialist prompt must *command*, not suggest.
   "Use getSecretRumors" made the model answer *"Yes, I can check that —
   would you like me to?"* and the gate never fired. The prompt now forbids
@@ -131,17 +136,18 @@ flowchart LR
 ```
 
 - **Both modules use plain `CompletableFuture`** around AiServices / ChatClient
-  scorers. This is the one pattern implemented identically on both sides, on
-  purpose: the DSL adds nothing to a fan-out, and identical code makes the
-  comparison clean — whatever differs in the output comes from the model, not
-  the framework.
+  scorers, on purpose: the DSL adds nothing to a fan-out. The fan-out is the
+  same on both sides; the error handling is not (see below), so the
+  side-by-side timings compare slightly different work.
 - **Trace signature**: OVERLAPPING `chat` spans with a common start — the only pattern where the waterfall stops being a staircase.
 - **Structured output is best-effort.** `gpt-4o-mini` occasionally returns a
   partial object; the Spring AI branch retries once with a blunter prompt and,
   failing that, records 0.0 with an explicit rationale rather than silently
   ranking the wrong candidate. A branch that throws — timeout, 429 — is caught
   per branch, because `join()` would otherwise turn one failed candidate out of
-  five into a 500 for the whole request.
+  five into a 500 for the whole request. The LangChain4j twin has neither: its
+  `CandidateScore` holds a primitive `double` and it calls `join()` directly,
+  so there one failed branch still fails the request.
 - Practical note: this pattern is why we migrated to OpenRouter — a local single-GPU/CPU Ollama serializes inference and hides the parallelism.
 
 ## 4. Evaluator-optimizer (loop)
@@ -160,7 +166,7 @@ flowchart TB
     F --> E
 ```
 
-- **LC4j**: `loopBuilder().subAgents(scorer, fixer).maxIterations(4).exitCondition(scope -> scope.readState("score", 0.0) >= 0.85)`
+- **LC4j**: `loopBuilder().subAgents(scorer, fixer).maxIterations(4).exitCondition(scope -> scope.readState("evaluation", new Evaluation(0.0, "")).score() >= 0.85)` — the scorer writes the same `Evaluation(score, feedback)` record that Spring AI uses.
 - **Spring AI**: a hand-written `for` with a structured-output evaluator
   (`record Evaluation(double score, String feedback)`) and an `if` on the
   threshold. The sharpest DSL-vs-Java contrast in the whole set: an exit
@@ -178,17 +184,22 @@ flowchart TB
   metrics, as roughly twice the calls and tokens of the twin.
 - **0.85 is a demo parameter, not a quality bar.** It sits deliberately in the
   gap between what the scoring rules grant a correct lineup (0.8) and what they
-  grant one that also lists shirt numbers and states the formation (0.9), so
-  the first pass fails, the fixer adds exactly those two things, and the second
-  or third pass clears the bar. At 0.8 the loop exits immediately and the
-  pattern demonstrates nothing. The value lives in **three** places: both
-  `THRESHOLD` constants and the flow diagram in `chat-ui`.
+  grant one that also lists shirt numbers and states the formation (0.9), so a
+  lineup that is merely correct fails and the fixer has to add exactly those
+  two things. A first proposal that already has both passes on the first check,
+  and that happens often, because the generator gets the squad with shirt
+  numbers — a run that should show the loop may need a second try. At 0.8
+  every correct first lineup would pass and the pattern would demonstrate
+  nothing. The value lives in **three** places: both `THRESHOLD` constants and
+  the flow diagram in `chat-ui`.
 - **Trace signature**: one `chat` (generator), then N repetitions of a
   score+fix pair. The Spring AI side wraps each lap in an
   `evaluator_iteration N` span carrying `evaluator.score`, so the waterfall
-  shows quality converging. The LangChain4j side cannot: the loop lives inside
-  `loopBuilder()` and there is no callback to hook — the same trade as always,
-  one level down.
+  shows quality converging. The LangChain4j side has no such span, because the
+  loop lives inside `loopBuilder()`. It could: an `AgentListener` on the scorer
+  sees every call and its `Evaluation`, and `AgentMonitor` already numbers the
+  laps (`iterationIndex`). It takes extra wiring, while a hand-written loop owns
+  its counter — the same trade as always, one level down.
 
 ## 5. Orchestrator-workers
 
@@ -254,10 +265,11 @@ flowchart TB
   loop owned entirely by `ToolCallingAdvisor`.
 - **Who owns the loop is the real question.** In `patterns-spring-ai` we write
   it, so `MAX_ITERATIONS` is on the first line. In `multimodal-lab` the
-  framework writes it, and there is no iteration limit at all — a failing tool
-  was once called over a hundred times in one turn. Delegating the loop means
-  the stop condition becomes your job in a place where nothing reminds you of
-  it.
+  framework writes it. On Spring AI 2.0.0 there was no iteration limit at all —
+  a failing tool was once called over a hundred times in one turn; since 2.0.1
+  the framework caps a turn at 40 calls per tool and 150 in total, but that
+  counts calls, not failures. Delegating the loop means the stop condition
+  becomes your job in a place where nothing reminds you of it.
 - **Human-in-the-loop** is not a flow pattern but a gate spliced into one:
   here it guards `getSecretRumors()` in both modules via the shared
   `HumanApprovalService.gate(...)` from `common`, with the same REST contract

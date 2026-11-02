@@ -66,9 +66,12 @@ mcp-server) and its hand copy in `claude-mcp-server/CodeToolsService` emit
 
 `patterns-spring-ai` adds one hand-written span per evaluator lap
 (`evaluator_iteration N`, carrying `evaluator.score`), so the waterfall shows
-quality converging rather than only time passing. The LangChain4j twin cannot:
-its loop lives inside `loopBuilder()` and there is no callback to hook. Same
-trade one level down — declarative code is shorter and less observable.
+quality converging rather than only time passing. The LangChain4j twin has no
+such span: its loop lives inside `loopBuilder()`. It could have one — an
+`AgentListener` on the scorer sees every call and its `Evaluation`, and
+`AgentMonitor` numbers the laps (`iterationIndex`) — but that takes wiring the
+repo does not do. Same trade one level down — declarative code is shorter and
+shows less of the middle unless you hook in.
 
 ### A fourth approach: multimodal-lab, where two modalities leave the framework
 

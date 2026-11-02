@@ -23,8 +23,10 @@ import java.util.concurrent.Executors;
  * LangChain4j implementation: an AiServices scorer returning a typed POJO
  * (LC4j parses the JSON for us) fanned out with CompletableFuture on
  * virtual threads. The Agentic DSL has a parallel flavour too, but the
- * executor version keeps the mechanics visible — and is identical to the
- * Spring AI module, which makes the frameworks directly comparable here.
+ * executor version keeps the mechanics visible, and the fan-out is the same
+ * as in the Spring AI module. The error handling is not: the Spring AI twin
+ * retries an unusable answer once and catches errors per branch, while here
+ * join() lets one failed branch fail the whole request.
  *
  * Trace signature: OVERLAPPING "chat" spans with a common start.
  */

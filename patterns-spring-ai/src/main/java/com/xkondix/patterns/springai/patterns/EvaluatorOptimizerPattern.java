@@ -55,18 +55,24 @@ import org.springframework.stereotype.Service;
  *    demonstrated nothing. 0.85 sits deliberately in the GAP between what
  *    the scoring rules grant a correct lineup (0.8) and what they grant a
  *    lineup that also lists shirt numbers and states the formation (0.9), so
- *    the first pass fails, the fixer adds exactly those two things, and the
- *    second pass clears the bar. That is the whole reason the two numbers
- *    differ: 0.9 is a QUALITY rule for the scorer, 0.85 is the ACCEPTANCE
- *    bar for the loop.
+ *    a lineup that is merely correct fails and the fixer has to add exactly
+ *    those two things. A first proposal that already has both scores 0.9 or
+ *    more and passes on lap one — the generator gets the squad with shirt
+ *    numbers, so that happens often, and a demo run that should show the loop
+ *    may need a second try. That is the whole reason the two numbers differ:
+ *    0.9 is a QUALITY rule for the scorer, 0.85 is the ACCEPTANCE bar for the
+ *    loop.
  *
  * ── WHY THE SCORE IS ON A SPAN HERE AND NOT IN THE LANGCHAIN4J TWIN ─────────
  *
  * A hand-written loop owns its control flow, so the iteration counter and
  * the score are ordinary local variables — putting them on a span is three
  * lines. The Agentic DSL owns the loop instead: the score lives in the
- * AgenticScope and the iteration boundary is inside loopBuilder(), with no
- * callback to hook. The DSL gives away less of the middle.
+ * AgenticScope and the iteration boundary is inside loopBuilder(). It can
+ * still be observed — an AgentListener on the scorer sees every call and its
+ * Evaluation, and AgentMonitor numbers the laps (iterationIndex) — but that
+ * is extra wiring the twin does not have. Out of the box the DSL gives away
+ * less of the middle.
  *
  * That is not a criticism of either side. It is the same trade this whole
  * project is about, showing up one level down: declarative code is shorter

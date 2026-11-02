@@ -42,10 +42,13 @@ import org.springframework.stereotype.Service;
  * reported "Accepted after 1 iteration(s) (score 0.8)". The pattern was
  * working and demonstrating nothing: the trace hint promises "one chat, then
  * N repetitions of a score+fix pair" and the waterfall showed a single pair.
- * 0.85 sits deliberately ABOVE what the rules grant on the first pass, so
- * the fixer has to run at least once and the loop is visible. Both modules
- * use the same number on purpose — it is the one knob that decides whether
- * this demo shows a loop or a straight line.
+ * 0.85 sits deliberately ABOVE the 0.8 a merely correct lineup gets, so such
+ * a lineup has to go through the fixer and the loop is visible. A first
+ * proposal that already states the formation and a shirt number for every
+ * starter scores 0.9 or more and exits after one check; the proposer gets
+ * the squad with shirt numbers, so that happens often. Both modules use the
+ * same number on purpose — it is the one knob that decides whether this demo
+ * shows a loop or a straight line.
  *
  * THE FIXER READS THE FEEDBACK. The scorer used to return a bare number,
  * so the fixer knew THAT a lineup failed but never WHY, and could only
