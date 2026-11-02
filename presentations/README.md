@@ -9,7 +9,7 @@ last year's talk on the basics (RAG, chat memory, tools), whose code lives in
 | # | Title | What it covers | Modules | Status |
 |---|-------|----------------|---------|--------|
 | I | **The Agent Is a Loop** | Writing one by hand, and what frameworks hide when they write it for you | `raw-agent`, `langchain4j-agent-local`, `spring-ai-agent-local`, `multimodal-lab` | ✅ [PDF](The%20Agent%20Is%20a%20Loop%20.pdf) · [PPTX](The%20Agent%20Is%20a%20Loop%20.pptx) |
-| II | **Agentic Workflow Patterns** | Five shapes, two frameworks, and when the DSL earns its keep | `patterns-langchain4j`, `patterns-spring-ai` — see [`PATTERNS.md`](../PATTERNS.md) | planned |
+| II | **Agentic Workflow Patterns** | Five shapes, two frameworks, and when the DSL earns its keep | `patterns-langchain4j`, `patterns-spring-ai` — see [`PATTERNS.md`](../PATTERNS.md) | ✅ [PDF](Agentic%20Workflow%20Patterns.pdf) · [PPTX](Agentic%20Workflow%20Patterns.pptx) |
 | III | **MCP as a Process Boundary** | Tools, resources and prompts over two transports: HTTP for agents, STDIO for Claude Desktop | `mcp-server`, `claude-mcp-server`, `langchain4j-agent-mcp`, `spring-ai-agent-mcp` | planned |
 | IV | **How Do You Know It Works?** | Traces, metrics, logs and dashboards for everything your agents actually do | Grafana LGTM stack — see [`OBSERVABILITY.md`](../OBSERVABILITY.md) | planned |
 
@@ -59,3 +59,81 @@ Spring Boot 4.0.4 · Spring AI 2.0.1 · LangChain4j 1.16.3 · Java 21.
 The tool call limits on the **Who stops the loop?** slide (40 per tool, 150 per
 turn) exist only from Spring AI 2.0.1 — 2.0.0 had no limit at all
 ([upgrade notes](https://docs.spring.io/spring-ai/reference/upgrade-notes.html#_new_tool_call_limits)).
+
+## Notes for Part II
+
+Read these if you go through the PDF without the talk. Slide numbers are PDF
+page numbers, hidden slides included.
+
+### Two evaluator runs
+
+The evaluator-optimizer section shows two different runs. **Results** (45),
+the Spring AI **Trace** (50) and the LangChain4j **Trace** (60) come from runs
+where the first lineup cleared the 0.85 threshold on the first check (0.9 in
+Spring AI, 1.0 in LangChain4j), so the fixer never ran. **More accurate
+trace** (51) and **Third time's the charm** (52) show a run that needed three
+laps: 0.8, 0.8, 1.0. The third lap is the short one, because an accepted
+lineup is not sent to the fixer.
+
+Whether a run loops depends on the first proposal. The generator prompt asks
+for the formation and shirt numbers, which the scoring rules reward with 0.9,
+so a good first lineup passes straight away.
+
+Only the Spring AI module puts a span on every lap (`evaluator_iteration`).
+The LangChain4j twin could do the same: `AgentListener` and `AgentMonitor`
+see every agent invocation inside `loopBuilder()`, iteration index included.
+
+### Every specialist has every tool
+
+The diagram on **Routing** (21) gives each specialist its own tools. The code
+does not: **Routing → Spring AI** (23) gives all four tools to `milanAgent`,
+and in LangChain4j all three specialists share `milanToolProvider` (28). The
+squad specialist can therefore call `getSecretRumors` and trigger the approval
+gate. Narrowing the tools per specialist is the obvious next step, and routing
+is the natural place for least privilege.
+
+### What `@Agent` is for
+
+`@Agent` is required on every interface built with `agentBuilder()`. It marks
+the method the planner calls, and without it the build fails with
+`No agent method found`. On the typed workflow interfaces
+(`ScoutReportWorkflow`, `RoutedAnswerWorkflow`, `LineupWorkflow`) it is
+optional. Its text never reaches the agent's own model (**What the model
+actually sees**, 19), and in a sequence nobody reads it either, because the
+order comes from `subAgents(...)`. A supervisor is its only reader: the
+supervisor's model picks the next agent from these descriptions.
+
+### Parallelization: same shape, different details
+
+**It's quite simple** (38) holds for the shape: both modules fan out with
+`CompletableFuture` and pick the best score in Java. The details differ. The
+Spring AI version retries an unusable answer once with a stricter prompt,
+keeps the score as a boxed `Double` because the model sometimes leaves it out,
+and catches errors per branch. The LangChain4j version calls `join()`
+directly, so one failed branch fails the whole request. The timings on
+**Results** (37) therefore compare slightly different work.
+
+### Orchestrator workers run one after another
+
+The plan asks for independent subtasks, but both modules run the workers in
+sequence (`plan.subtasks().stream().map(...)`). The time on **Results** (62)
+is the sum of the worker calls. Running them the way Parallelization does
+would bring it close to the slowest worker.
+
+### The framework writes part of the prompt
+
+When a call returns a typed result, the prompt the model receives ends with
+text that is not in the code. LangChain4j appends instructions based on the
+method's return type: "You must answer strictly in the following JSON
+format: …" for a record, "…with one of these enums: …" for an enum. In
+Spring AI, `.entity(...)` makes `BeanOutputConverter` generate a JSON Schema,
+and `ChatModelCallAdvisor` appends it to the user message right before the
+call. Both are requests, not guarantees. The model can still leave a field
+out, which is why the Spring AI parallelization keeps its retry.
+Provider-enforced schemas are opt-in: the `RESPONSE_FORMAT_JSON_SCHEMA`
+capability in LangChain4j, `useProviderStructuredOutput()` in Spring AI.
+
+### Versions
+
+Same as Part I, plus `langchain4j-agentic` 1.16.3-beta26 from the LangChain4j
+1.16.3 BOM. The agentic module is still on the beta line.

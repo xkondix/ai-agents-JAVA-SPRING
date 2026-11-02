@@ -97,7 +97,7 @@ multimodal:
   #
   # Turn it on for the demo, turn it off afterwards.
   video:
-    enabled: ${MULTIMODAL_VIDEO_ENABLED:false}
+    enabled: ${MULTIMODAL_VIDEO_ENABLED:true}
     model: ${OPENROUTER_VIDEO_MODEL:google/veo-3.1}
     # 720p at ~$0.40/s rather than 1080p at ~$0.75/s. Durations are per model
     # — Veo accepts 4, 6 or 8 seconds and rejects anything else with a 400.
