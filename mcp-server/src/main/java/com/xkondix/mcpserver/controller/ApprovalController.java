@@ -11,8 +11,13 @@ import java.util.List;
  * REST API for the human-in-the-loop Approval Flow.
  *
  * The Chat UI (/approvals page) polls GET /approvals and posts approve/reject.
- * CORS is open so the Vite dev server (localhost:3000) can call it directly —
- * the patterns modules go through the Vite proxy instead and need no CORS.
+ * CORS lets the Vite dev server (localhost:3000) call it directly — the
+ * patterns modules go through the Vite proxy instead and need no CORS.
+ *
+ * ONE ORIGIN, ON PURPOSE. With origins = "*" any page open in the same browser
+ * could read GET /approvals and approve a pending save_note: the human-in-the-
+ * loop gate is only as strong as the endpoint that opens it. server.address in
+ * application.yml keeps other machines on the network out.
  *
  * The payload type now comes from `common` (PendingApproval); the JSON shape
  * is unchanged (id, type, toolName, description, details, createdAt, status),
@@ -20,7 +25,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/approvals")
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = "http://localhost:3000")
 @RequiredArgsConstructor
 public class ApprovalController {
 

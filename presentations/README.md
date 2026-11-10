@@ -10,10 +10,17 @@ last year's talk on the basics (RAG, chat memory, tools), whose code lives in
 |---|-------|----------------|---------|--------|
 | I | **The Agent Is a Loop** | Writing one by hand, and what frameworks hide when they write it for you | `raw-agent`, `langchain4j-agent-local`, `spring-ai-agent-local`, `multimodal-lab` | ✅ [PDF](The%20Agent%20Is%20a%20Loop%20.pdf) · [PPTX](The%20Agent%20Is%20a%20Loop%20.pptx) |
 | II | **Agentic Workflow Patterns** | Five shapes, two frameworks, and when the DSL earns its keep | `patterns-langchain4j`, `patterns-spring-ai` — see [`PATTERNS.md`](../PATTERNS.md) | ✅ [PDF](Agentic%20Workflow%20Patterns.pdf) · [PPTX](Agentic%20Workflow%20Patterns.pptx) |
-| III | **MCP as a Process Boundary** | Tools, resources and prompts over two transports: HTTP for agents, STDIO for Claude Desktop | `mcp-server`, `claude-mcp-server`, `langchain4j-agent-mcp`, `spring-ai-agent-mcp` | planned |
+| III | **MCP as a Process Boundary** | Tools, resources and prompts over two transports: HTTP for agents, STDIO for Claude Desktop | `mcp-server`, `claude-mcp-server`, `langchain4j-agent-mcp`, `spring-ai-agent-mcp` | ✅ [PDF](MCP%20as%20a%20Process%20Boundary.pdf) · [PPTX](MCP%20as%20a%20Process%20Boundary.pptx) |
 | IV | **How Do You Know It Works?** | Traces, metrics, logs and dashboards for everything your agents actually do | Grafana LGTM stack — see [`OBSERVABILITY.md`](../OBSERVABILITY.md) | planned |
 
 Endpoints, tools and meters for every module: [`ENDPOINTS.md`](../ENDPOINTS.md).
+
+## About the images
+
+The illustrations in the slides are AI-generated and meant as humour. All
+trademarks that appear in them belong to their respective owners. This is a
+non-commercial, educational project, not affiliated with or endorsed by any of
+them.
 
 ## Notes for Part I
 
