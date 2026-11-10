@@ -13,8 +13,12 @@ lc4j:
     # Off by default: a tool call produces two traces (agent + mcp-server), the
     # contrast with spring-ai-agent-mcp. true = traceparent on every POST /mcp,
     # one trace with Services: 2. See McpClientConfig.
+    #
+    # Keep it false until the propagation part of the talk ("Why two traces?"
+    # needs two), then restart with --lc4j.mcp.trace-propagation.enabled=true.
+    # The pre-demo checklist in OBSERVABILITY.md §5 has the same step.
     trace-propagation:
-      enabled: true
+      enabled: false
 
 # ── Prompt / completion content on LangChain4j spans ─────────────────────
 # LC4j counterpart of spring.ai.chat.observations.log-prompt/log-completion.
@@ -31,12 +35,13 @@ xkondix:
 # Three signals to localhost:4318; property layout, the Logback->OTel bridge
 # and every silent failure found so far are documented in OBSERVABILITY.md.
 #
-# Worth knowing what this module is SUPPOSED to look like in Tempo: unlike
-# spring-ai-agent-mcp, trace propagation over MCP was deliberately NOT
-# implemented here — it stays as the A2A-vs-MCP contrast for part 2. So agent
-# and mcp-server traces are expected to be separate. "Two traces instead of
-# one" is the intended result here, not a regression. (Confirmed 2026-09-02:
-# agent trace 9db85c1a…, mcp-server logged the same call under 472b0fe2….)
+# Worth knowing what this module is SUPPOSED to look like in Tempo: with
+# lc4j.mcp.trace-propagation.enabled=false (above) the agent and mcp-server
+# traces are separate — the contrast with spring-ai-agent-mcp, which sends
+# traceparent from the start. "Two traces instead of one" is the intended
+# result here, not a regression. (Confirmed 2026-09-02: agent trace 9db85c1a…,
+# mcp-server logged the same call under 472b0fe2….) With the switch on, the
+# same call is one trace with Services: 2.
 management:
   endpoints:
     web:

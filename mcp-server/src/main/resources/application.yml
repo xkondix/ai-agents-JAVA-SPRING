@@ -1,5 +1,15 @@
 server:
   port: 8081
+  # LOOPBACK ONLY. Without this line Boot binds to every interface, so on a
+  # shared network (conference Wi-Fi included) anyone could call /mcp, where
+  # save_note and delete_note write, and approve a pending call via /approvals.
+  # The MCP spec says a local Streamable HTTP server SHOULD bind to 127.0.0.1
+  # only. Spring AI 2.0.1 does not check the Origin header either (its
+  # transport is built with ServerTransportSecurityValidator.NOOP), so this line
+  # and the narrowed CORS in ApprovalController are the guards we have.
+  # Both agents use http://localhost:8081, which the JDK resolves to 127.0.0.1
+  # first. Use --server.address=0.0.0.0 only if a client runs on another host.
+  address: 127.0.0.1
 
 spring:
   application:

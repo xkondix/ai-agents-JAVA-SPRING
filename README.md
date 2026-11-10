@@ -154,3 +154,12 @@ Full list: [`OBSERVABILITY.md`](OBSERVABILITY.md) §3.
 
 - <https://www.anthropic.com/engineering/building-effective-agents> `(the five patterns)`
 - <https://github.com/xkondix/aiSandbox-JAVA-SPIRNG> `(part one of the series: RAG, chat memory, tools)`
+
+---
+
+## About the images
+
+The illustrations in the slides are AI-generated and meant as humour. All
+trademarks that appear in them belong to their respective owners. This is a
+non-commercial, educational project, not affiliated with or endorsed by any of
+them.
