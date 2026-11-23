@@ -231,11 +231,12 @@
             logs, and micrometer-registry-otlp. That is why the three previous
             dependencies are gone — they are inside it.
 
-            ACTUATOR STAYS and is declared per module. It is not only about
-            endpoints: ConditionalOnEnabledLoggingExport, from
-            spring-boot-actuator-autoconfigure, is the FIRST condition of
-            OtlpLoggingAutoConfiguration. Without actuator, LOG export silently
-            backs off while traces and metrics keep working.
+            ACTUATOR STAYS and is declared per module, for its endpoints:
+            health (polled by the chat-ui) and prometheus. Log export does NOT
+            need it any more. Boot 4.0.0 did (see OBSERVABILITY.md); since
+            4.0.1 ConditionalOnEnabledLoggingExport lives in
+            spring-boot-opentelemetry, next to OtlpLoggingAutoConfiguration,
+            so this starter alone exports traces, metrics and logs.
 
             The Logback->OTel bridge itself lives in `common` (dependency,
             logback-spring.xml and the installer auto-configuration), so all

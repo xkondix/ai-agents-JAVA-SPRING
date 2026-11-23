@@ -235,11 +235,11 @@ public class ProjectPrompts {
             String specific = switch (signal == null ? "" : signal.toLowerCase()) {
                 case "logs" -> """
                     LOGS specifically:
-                      - spring-boot-starter-actuator MUST be on the classpath. Not for
-                        endpoints: ConditionalOnEnabledLoggingExport is an actuator class
-                        and is the FIRST condition of OtlpLoggingAutoConfiguration. Without
-                        actuator, log export backs off silently while traces and metrics
-                        keep working.
+                      - actuator is NOT needed for log export since Boot 4.0.1 (on 4.0.0
+                        it was). ConditionalOnEnabledLoggingExport now lives in
+                        spring-boot-opentelemetry and reads
+                        management.logging.export.otlp.enabled, then
+                        management.logging.export.enabled; both default to true.
                       - logback-spring.xml must declare the OpenTelemetryAppender AND
                         something must call OpenTelemetryAppender.install(openTelemetry).
                         Until install() runs the appender buffers 1000 records and drops
@@ -326,7 +326,7 @@ public class ProjectPrompts {
 
                 OBSERVABILITY
                   - are all three OTLP endpoints configured with the Boot 4 property names
-                  - is spring-boot-starter-actuator present (required for LOG export)
+                  - is spring-boot-starter-opentelemetry on the classpath (actuator is NOT required for logs since Boot 4.0.1)
                   - is every ChatClient built from the INJECTED ChatClient.Builder
                   - do hand-written spans use SERVER kind where they handle inbound calls
                   - are meter names identical to the other modules' (panels are shared)

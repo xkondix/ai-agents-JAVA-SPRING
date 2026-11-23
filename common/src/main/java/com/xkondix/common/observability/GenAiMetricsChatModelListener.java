@@ -118,6 +118,9 @@ public class GenAiMetricsChatModelListener implements ChatModelListener {
                 if (usage.outputTokenCount() != null) {
                     span.tag("gen_ai.usage.output_tokens", String.valueOf(usage.outputTokenCount()));
                 }
+                if (usage.totalTokenCount() != null) {
+                    span.tag("gen_ai.usage.total_tokens", String.valueOf(usage.totalTokenCount()));
+                }
             }
 
             AiMessage answer = context.chatResponse() != null

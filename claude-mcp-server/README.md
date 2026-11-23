@@ -203,7 +203,7 @@ properties moved with it:
 | traces | `management.otlp.tracing.endpoint` | `management.opentelemetry.tracing.export.otlp.endpoint` |
 | logs | — | `management.opentelemetry.logging.export.otlp.endpoint` |
 | metrics | `management.otlp.metrics.export.url` | unchanged (Micrometer registry, not the OTel SDK) |
-| dependency | actuator + bridge + exporter | `spring-boot-starter-opentelemetry` **+ actuator, see below** |
+| dependency | actuator + bridge + exporter | `spring-boot-starter-opentelemetry` (actuator not needed since 4.0.1, see below) |
 
 The old hand-picked dependency set put the Micrometer Tracing API on the
 classpath with nothing to auto-configure it, so no `Tracer` bean existed and
@@ -212,11 +212,11 @@ now resolves the tracer through `ObjectProvider` and degrades to "no spans,
 tools still work" if it is ever absent again. `MeterRegistry` is resolved the
 same way, falling back to a `SimpleMeterRegistry`.
 
-### Actuator is required — for log export, not for endpoints
+### Actuator was required for log export on Boot 4.0.0 — not any more
 
 This module has no web server, so it exposes no actuator endpoint and never
-will. `spring-boot-starter-actuator` is in the POM for exactly one reason: a
-`@ConditionalOnClass`. Compare the two auto-configurations in Boot 4.0.0:
+will. `spring-boot-starter-actuator` went into the POM for exactly one reason:
+a `@ConditionalOnClass`. Compare the two auto-configurations in Boot 4.0.0:
 
 ```java
 @ConditionalOnClass({ OtelTracer.class, SdkTracerProvider.class,
@@ -228,18 +228,24 @@ class OtlpTracingAutoConfiguration          // no actuator
 class OtlpLoggingAutoConfiguration          // FIRST condition is an actuator class
 ```
 
-`ConditionalOnEnabledLoggingExport` ships in `spring-boot-actuator-autoconfigure`.
-Drop actuator and OTLP **logging** auto-configuration silently backs off while
-traces and metrics keep working — an asymmetry that is easy to miss precisely
-because two of the three signals are fine.
+On 4.0.0 `ConditionalOnEnabledLoggingExport` shipped in
+`spring-boot-actuator-autoconfigure`. Without actuator, OTLP **logging**
+auto-configuration silently backed off while traces and metrics kept working —
+an asymmetry that is easy to miss precisely because two of the three signals
+are fine.
 
-The failure is completely quiet: the endpoint property still binds, the
-`OpenTelemetry` bean still exists, `OpenTelemetryAppender.install()` still runs
-and the appender still accepts records — but the SDK has no `LoggerProvider`
-behind it, so every record is dropped. Loki simply stays empty.
+The failure was completely quiet: the endpoint property still bound, the
+`OpenTelemetry` bean still existed, `OpenTelemetryAppender.install()` still ran
+and the appender still accepted records — but the SDK had no `LoggerProvider`
+behind it, so every record was dropped. Loki simply stayed empty.
 
-Removing this dependency "because there is no HTTP server" is therefore a
-one-line way to lose all logs with no error message.
+Fixed in 4.0.1 (see OBSERVABILITY.md). On 4.0.4 the annotation lives in
+`spring-boot-opentelemetry`, next to `OtlpLoggingAutoConfiguration`, and only
+reads `management.logging.export.otlp.enabled` and
+`management.logging.export.enabled` (both default to true). So
+`spring-boot-starter-opentelemetry` alone exports traces, metrics and logs.
+Actuator is still in the POM, but this module no longer needs it; if you remove
+it, check once that its logs still reach Loki.
 
 ### Traces
 

@@ -11,7 +11,7 @@ last year's talk on the basics (RAG, chat memory, tools), whose code lives in
 | I | **The Agent Is a Loop** | Writing one by hand, and what frameworks hide when they write it for you | `raw-agent`, `langchain4j-agent-local`, `spring-ai-agent-local`, `multimodal-lab` | ✅ [PDF](The%20Agent%20Is%20a%20Loop%20.pdf) · [PPTX](The%20Agent%20Is%20a%20Loop%20.pptx) |
 | II | **Agentic Workflow Patterns** | Five shapes, two frameworks, and when the DSL earns its keep | `patterns-langchain4j` and `patterns-spring-ai`, described in [`PATTERNS.md`](../PATTERNS.md) | ✅ [PDF](Agentic%20Workflow%20Patterns.pdf) · [PPTX](Agentic%20Workflow%20Patterns.pptx) |
 | III | **MCP as a Process Boundary** | Tools, resources and prompts over two transports, HTTP for agents and STDIO for Claude Desktop | `mcp-server`, `claude-mcp-server`, `langchain4j-agent-mcp`, `spring-ai-agent-mcp` | ✅ [PDF](MCP%20as%20a%20Process%20Boundary.pdf) · [PPTX](MCP%20as%20a%20Process%20Boundary.pptx) |
-| IV | **How Do You Know It Works?** | Traces, metrics, logs and dashboards for everything your agents actually do | Grafana LGTM stack, described in [`OBSERVABILITY.md`](../OBSERVABILITY.md) | 🚧 in progress |
+| IV | **How Do You Know It Works?** | Traces, metrics, logs and dashboards for everything your agents actually do | `common` and the agent modules from Parts I and III, on the Grafana LGTM stack described in [`OBSERVABILITY.md`](../OBSERVABILITY.md) | ✅ [PDF](How%20Do%20You%20Know%20It%20Works_.pdf) · [PPTX](How%20Do%20You%20Know%20It%20Works_.pptx) |
 
 Endpoints, tools and meters for every module are listed in
 [`ENDPOINTS.md`](../ENDPOINTS.md).
@@ -26,7 +26,7 @@ them.
 ## Sources
 
 The number after a slide title is its PDF page number. The links were last
-checked on 10 November 2026.
+checked on 10 November 2026, and the Part IV links on 23 November 2026.
 
 The online references describe the latest releases, which are newer than this
 repo. The Spring AI reference is for 2.0.2 and the LangChain4j javadoc for a
@@ -63,6 +63,15 @@ The vocabulary of Parts I and II comes from
   section of the Spring AI upgrade notes.
 * **DSL… but why?** (Part II, 41) links to the LangChain4j tutorial
   [Agents and Agentic AI](https://docs.langchain4j.dev/tutorials/agents/).
+* **When Does It Leave?** (Part IV, 29) links to the three defaults it
+  quotes. The span batch comes from Spring Boot's
+  [`OpenTelemetryTracingProperties`](https://github.com/spring-projects/spring-boot/blob/v4.0.4/module/spring-boot-micrometer-tracing-opentelemetry/src/main/java/org/springframework/boot/micrometer/tracing/opentelemetry/autoconfigure/OpenTelemetryTracingProperties.java#L57-L67)
+  (512 per batch, 2048 in the queue, 5 s between exports), the log batch
+  from the OpenTelemetry SDK's
+  [`BatchLogRecordProcessorBuilder`](https://github.com/open-telemetry/opentelemetry-java/blob/v1.55.0/sdk/logs/src/main/java/io/opentelemetry/sdk/logs/export/BatchLogRecordProcessorBuilder.java#L27-L31)
+  (1 s, 2048, 512) and the metrics step from Spring Boot's
+  [`PushRegistryProperties`](https://github.com/spring-projects/spring-boot/blob/v4.0.4/module/spring-boot-micrometer-metrics/src/main/java/org/springframework/boot/micrometer/metrics/autoconfigure/export/properties/PushRegistryProperties.java#L35-L56)
+  (one minute).
 
 ### Documentation behind the framework claims
 
@@ -144,6 +153,16 @@ The vocabulary of Parts I and II comes from
   back every row of the table on **What 2026-07-28 changes** (Part III, 51).
   The same page dates the deprecation of HTTP+SSE to revision `2025-03-26`
   (**Why SSE was replaced**, Part III, 26).
+
+#### OpenTelemetry
+
+* The GenAI
+  [attribute registry](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/registry/attributes/gen-ai.md)
+  defines `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` and no
+  total. The `gen_ai.usage.total_tokens` on **Spans** (Part IV, 50) and
+  **Span** (Part IV, 54 and 62) is Spring AI's addition, which the repo
+  copies. The GenAI conventions have moved there from the main
+  semantic-conventions repository.
 
 ## How to read the notes
 
@@ -401,3 +420,126 @@ Same as Part I. `claude-mcp-server` is outside the Maven reactor and has its
 own parent, on the same version set. The Spring AI modules use the official
 MCP Java SDK, whose version the Spring AI BOM manages. LangChain4j uses its
 own client, `langchain4j-mcp`.
+
+## Notes for Part IV
+
+67 pages.
+
+### Where the buckets come from
+
+The code on **Buckets for every framework at once** (14) matches timers with
+`isLatencyTimer`, but the slide does not show the names it matches.
+`LATENCY_TIMERS` in `ObservabilityAutoConfiguration` holds both spellings of
+the chat timer, `gen.ai.client.operation` for `raw-agent` and the LangChain4j
+listener and `gen_ai.client.operation` for Spring AI, plus `spring.ai.tool` and
+`mcp.tool.duration`. Prometheus turns both spellings into
+`gen_ai_client_operation`, but the filter runs on Micrometer names, where they
+are two. The first version listed only the dotted one. That is the row
+"Buckets everywhere except Spring AI" on **Where this breaks, part 2** (66).
+
+Pages 16 to 18 have no titles. They repeat the check in Prometheus before and
+after the filter. Page 16 counts buckets per timer series (1, then 9), page 17
+lists the bounds (`+Inf` only, then eight bounds and `+Inf`) and page 18 runs
+the p95 query (`NaN`, then 1950). The 1 next to every bound on page 17 is a
+number of series, not of calls. The 1950 is interpolated. Every call in the
+five-minute window fell into the 1 to 2 s bucket, so `histogram_quantile`
+returns 1000 + 0.95 × (2000 − 1000). The real p95 is somewhere between one and
+two seconds, and the 1.95 s on **Same panel, after the filter** (15) is the
+same number.
+
+### What is registered at zero
+
+**Meters by hand** (19) registers the three token counters and the timer with
+`error=none` at startup, so the first request after a restart is an increase
+from 0. The error counter is created on the first failed call, as **Metric**
+(53 and 61) shows, and the tool-request counter on the first request for each
+tool. Neither shows up in `rate()` the first time. The "three counters" on
+**Tracing by hand** (20) are the token counters, and the errors counter in the
+`catch` comment is a fourth.
+
+### The Observation code is an illustration
+
+The code on **Observation API (Meter + Tracing) by Micrometer** (21) and
+**Observation API** (22) is not in any module. `raw-agent` measures the same
+call with `Tracer` and `Timer` separately, as on **Tracing by hand** (20). The
+name `gen_ai.client.operation` is the one Spring AI 2.0.1 gives its chat
+observation (`DefaultChatModelObservationConvention.DEFAULT_NAME`). Tokens stay
+a counter because an observation measures time, not quantities.
+
+### Metrics leave once a minute
+
+**When Does It Leave?** (29) links to the three defaults. Spans leave when 512
+are waiting or after 5 s, whichever comes first, logs the same way after 1 s,
+and metrics once a minute, however many there are. At short time ranges
+Grafana's `$__rate_interval` comes out at about one minute. `rate()` needs two
+samples in its window and most windows hold one, so the panels look empty.
+**Datasource config** (41) sets `timeInterval: 60s`, and every `rate()` and
+`increase()` query in the dashboard carries `interval: 1m`. That is the first
+row on **Where this breaks, part 2** (66).
+
+### Which lines reach Loki
+
+`additivity="true"` is the Logback default, and the level on `root` does not
+filter lines that a child logger passes up. That is why
+`dev.langchain4j.http.client.log` reaches Loki on **No appender, still in
+Loki** (34) without an appender of its own. `common/logback-spring.xml` sets it
+to `additivity="true"` on purpose, and one agent call writes 20 to 35 kB of raw
+HTTP there. `additivity="false"` with a `CONSOLE` ref keeps it on the console,
+as **What reaches Loki, and who decides** (35) shows.
+
+On the same slide, "false → no lines at all" for Spring AI covers the
+observation handlers only. `spring-ai-agent-local` also registers
+`SimpleLoggerAdvisor`, which logs the request and the response at DEBUG
+(enabled in its `application.yml`), and its own `InspectionAdvisor`, which
+logs the user message at INFO, whatever `log-prompt` and `log-completion` say.
+
+### 3100 means two things
+
+On **docker-compose** (40) port 3100 is Grafana, published from port 3000 of
+the container. On **Datasource config** (41) `http://localhost:3100` is Loki,
+which Grafana reaches inside the same container. The header of
+`grafana/provisioning/datasources/datasources.yml` lists both.
+
+### Names, not series
+
+The query on **Metric** (49, 53 and 61) groups by `__name__` and `job`. "5
+meters → 25 series" and "3 meters → 5 series" count metric names, and "a
+counter, one series, nothing to split" on page 49 is one name. In Prometheus a
+series is a name plus a set of labels. The token counter alone has three, one
+per `gen_ai_token_type`, as **Meters by hand** (19) says, and every timer has a
+`_bucket` series per bound.
+
+### One tool_calling span per loop
+
+**Schema** (48) says that `tool_calling` "wraps every iteration". In Spring AI
+2.0.1 it is one span around the whole loop. The trace on **Traces** (44) shows
+one `tool_calling` above both model calls.
+
+### Same names, different attributes
+
+The sentence under the table on **GenAiMetricsChatModelListener** (55) is right
+that every meter carries `framework=langchain4j`, but the shared panels group
+by `job`. Spring AI's series have no `framework` tag.
+
+Span names are the same in all three frameworks, and some attributes are not
+(**Spans**, 50, **Span**, 54 and 62). Spring AI and `raw-agent` set
+`gen_ai.system` and the finish reason, and LangChain4j sets neither. The tool
+name is `spring.ai.tool.definition.name` in Spring AI and `gen_ai.tool.name`
+in the other two. All three set `gen_ai.usage.total_tokens`, which is Spring
+AI's addition and not part of the OpenTelemetry GenAI conventions.
+
+### Two of the failures were loud
+
+The subtitle on **Where this breaks, part 1** (65) says that every failure in
+this project came without an error and only the dashboard noticed. Rows 14 and
+17 of the table in `OBSERVABILITY.md` §3 fail loudly, so read it as every
+failure on these slides. Two of those, the missing `ChatClient` spans and the
+missing prompt, show up in Tempo rather than on the dashboard.
+
+### Versions
+
+Same as Part I. Micrometer 1.16.4 and the OpenTelemetry SDK 1.55.0 come with
+the Spring Boot 4.0.4 BOM. The Logback appender
+(`opentelemetry-logback-appender-1.0`) is 2.21.0-alpha, set in the root
+`pom.xml` because Boot does not manage that group. The stack runs on
+`grafana/otel-lgtm:0.32.0`.
