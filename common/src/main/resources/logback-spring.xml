@@ -8,9 +8,9 @@
     both langchain4j-agent-*, both spring-ai-agent-*, and both patterns-*.
 
     THE POINT OF THIS FILE IS THE OTEL APPENDER. Spring Boot 4 auto-configures
-    the OpenTelemetry logging SDK and its OTLP exporter (given actuator on the
-    classpath, which supplies ConditionalOnEnabledLoggingExport), but it does
-    NOT connect Logback to that SDK. The bridge is ours: this appender plus
+    the OpenTelemetry logging SDK and its OTLP exporter (from
+    spring-boot-starter-opentelemetry, no actuator needed since 4.0.1), but it
+    does NOT connect Logback to that SDK. The bridge is ours: this appender plus
     OtelLoggingBridgeAutoConfiguration, which arms it with install().
 
     NOTE ON claude-mcp-server: that module is outside the reactor, does not

@@ -71,8 +71,8 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency> -->
 
-        <!-- Actuator: endpoints AND the condition that enables OTLP log export
-             (ConditionalOnEnabledLoggingExport). Do not remove. -->
+        <!-- Actuator: the health and prometheus endpoints. Since Boot 4.0.1
+             OTLP log export no longer depends on it (see the parent pom). -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>

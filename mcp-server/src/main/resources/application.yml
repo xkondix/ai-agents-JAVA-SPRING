@@ -114,8 +114,8 @@ spring:
 #
 # Logs additionally need the Logback->OTel bridge, which lives in `common`
 # (logback-spring.xml + OtelLoggingBridgeAutoConfiguration) and reaches every
-# module transitively. Actuator must stay on the classpath for the OTLP
-# logging auto-configuration to switch on at all.
+# module transitively. Since Boot 4.0.1 the OTLP logging auto-configuration
+# no longer needs actuator; it stays here for the health endpoint.
 #
 # This module is the RECEIVING end of the distributed trace, so a wrong tracing
 # endpoint here is especially misleading: its spans are created and correctly
